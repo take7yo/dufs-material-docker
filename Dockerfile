@@ -1,8 +1,8 @@
 ###############################################################################
-#  Multi-arch Dockerfile: dufs with Material Design UI
+#  Multi-arch Dockerfile: dufs + material-assets UI (--assets approach)
 #
-#  Uses dufs-mod pre-built binary from TransparentLC/dufs-material-assets
-#  Material UI is embedded directly in the binary — no --assets flag needed.
+#  Uses stock dufs binary + material-assets zip at runtime via --assets flag.
+#  Only supports amd64, arm64, arm/v7 (stock dufs release availability).
 #
 #  Targets:
 #    test   – alpine-based image with shell (for CI verification)
@@ -13,7 +13,6 @@
 #    DUFS_BIND      – bind address    (default: 0.0.0.0)
 #    DUFS_ALLOW_ALL – all operations  (set "true" to enable)
 #    DUFS_AUTH      – auth rules      (e.g. "user:pass@/:rw")
-#    See https://github.com/sigoden/dufs#cli-options for all options
 ###############################################################################
 
 # ── 1. Builder ───────────────────────────────────────────────────────────────
@@ -25,31 +24,41 @@ ARG TARGETVARIANT
 
 RUN apk add --no-cache curl unzip
 
-# Download dufs-mod binary (Material UI embedded)
+# Download stock dufs binary
 RUN set -eux; \
-    case "${TARGETARCH}${TARGETVARIANT}" in \
-      386)         RUST_TARGET="i686-unknown-linux-musl"       ;; \
-      amd64)       RUST_TARGET="x86_64-unknown-linux-musl"     ;; \
-      armv6|arm)   RUST_TARGET="arm-unknown-linux-musleabihf"   ;; \
-      armv7)       RUST_TARGET="armv7-unknown-linux-musleabihf" ;; \
-      arm64)       RUST_TARGET="aarch64-unknown-linux-musl"     ;; \
-      *)           echo "Unsupported: ${TARGETARCH}${TARGETVARIANT}" && exit 1 ;; \
+    case "${TARGETARCH}" in \
+      amd64)  RUST_TARGET="x86_64-unknown-linux-musl"  ;; \
+      arm64)  RUST_TARGET="aarch64-unknown-linux-musl"  ;; \
+      arm)    RUST_TARGET="armv7-unknown-linux-musleabihf" ;; \
+      *)      echo "Unsupported: ${TARGETARCH}" && exit 1 ;; \
     esac; \
-    FILE="dufs-mod-v${DUFS_VERSION}-${RUST_TARGET}.zip"; \
-    URL="https://github.com/TransparentLC/dufs-material-assets/releases/download/v${DUFS_VERSION}/${FILE}"; \
-    echo "Downloading: ${URL}"; \
-    curl -fsSL "${URL}" -o /tmp/dufs-mod.zip && \
-    unzip -q /tmp/dufs-mod.zip -d /tmp && \
-    mv /tmp/dufs /usr/local/bin/dufs && \
-    chmod +x /usr/local/bin/dufs && \
-    rm -f /tmp/dufs-mod.zip && \
-    echo "Installed:" && ls -lh /usr/local/bin/dufs
+    URL="https://github.com/sigoden/dufs/releases/download/v${DUFS_VERSION}/dufs-v${DUFS_VERSION}-${RUST_TARGET}.tar.gz"; \
+    echo "Downloading dufs from: ${URL}"; \
+    curl -fsSL "${URL}" | tar xz -C /tmp; \
+    mv /tmp/dufs /usr/local/bin/dufs; \
+    chmod +x /usr/local/bin/dufs
 
-# Smoke test (browser UA — dufs serves different HTML to curl vs browser)
+# Download & extract material-assets
+RUN curl -fsSL \
+      "https://github.com/TransparentLC/dufs-material-assets/releases/download/v${DUFS_VERSION}/dufs-material-assets-embed.zip" \
+      -o /tmp/assets.zip && \
+    mkdir -p /tmp/assets-extract /opt/dufs/assets && \
+    unzip -q /tmp/assets.zip -d /tmp/assets-extract && \
+    CONTENTS=$(ls /tmp/assets-extract) && \
+    if [ "$(echo "$CONTENTS" | wc -l)" = 1 ] && [ -d "/tmp/assets-extract/$CONTENTS" ]; then \
+      cp -a /tmp/assets-extract/$CONTENTS/* /opt/dufs/assets/; \
+    else \
+      cp -a /tmp/assets-extract/* /opt/dufs/assets/; \
+    fi && \
+    rm -rf /tmp/assets.zip /tmp/assets-extract && \
+    echo "── Assets installed ──" && \
+    ls -la /opt/dufs/assets/
+
+# Smoke test
 RUN mkdir -p /data && \
     sh -c ' \
       UA="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120.0.0.0" && \
-      /usr/local/bin/dufs /data --allow-all -p 5050 & \
+      /usr/local/bin/dufs /data --assets /opt/dufs/assets --allow-all -p 5050 & \
       sleep 2 && \
       BODY=$(curl -sf -A "$UA" http://127.0.0.1:5050/) && \
       if echo "$BODY" | grep -q "__INITIAL_DATA__"; then \
@@ -65,20 +74,22 @@ RUN mkdir -p /data && \
 FROM alpine:3.22 AS test
 
 COPY --from=builder /usr/local/bin/dufs     /usr/local/bin/dufs
+COPY --from=builder /opt/dufs/assets        /opt/dufs/assets
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 
 EXPOSE 5000
 VOLUME ["/data"]
-ENTRYPOINT ["/usr/local/bin/dufs", "/data"]
+ENTRYPOINT ["/usr/local/bin/dufs", "/data", "--assets", "/opt/dufs/assets"]
 CMD ["--allow-all", "--bind", "0.0.0.0", "--port", "5000"]
 
 # ── 3. Final image (scratch — minimal, no shell) ────────────────────────────
 FROM scratch AS final
 
 COPY --from=builder /usr/local/bin/dufs     /usr/local/bin/dufs
+COPY --from=builder /opt/dufs/assets        /opt/dufs/assets
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 
 EXPOSE 5000
 VOLUME ["/data"]
-ENTRYPOINT ["/usr/local/bin/dufs", "/data"]
+ENTRYPOINT ["/usr/local/bin/dufs", "/data", "--assets", "/opt/dufs/assets"]
 CMD ["--allow-all", "--bind", "0.0.0.0", "--port", "5000"]
