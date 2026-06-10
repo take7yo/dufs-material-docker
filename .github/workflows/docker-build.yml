@@ -26,7 +26,7 @@ on:
         required: false
 
 permissions:
-  contents: read
+  contents: write
 
 env:
   DOCKERHUB_REPO: take7yo/dufs
@@ -95,20 +95,36 @@ jobs:
           fi
 
   # ════════════════════════════════════════════════════════════════════════════
-  #  Job 2: Build & push multi-platform Docker image
+  #  Job 2: Verify each platform, then push
   # ════════════════════════════════════════════════════════════════════════════
   build:
     runs-on: ubuntu-latest
     needs: check
     if: needs.check.outputs.has_update == 'true'
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - platform: linux/amd64
+            tag: amd64
+          - platform: linux/arm64
+            tag: arm64
+          - platform: linux/arm/v7
+            tag: armv7
+          - platform: linux/arm/v6
+            tag: armv6
+          - platform: linux/386
+            tag: i386
     steps:
       - uses: actions/checkout@v4
 
       # ── Save version for next scheduled run ────────────────────────────────
       - name: Save current version
+        if: matrix.platform == 'linux/amd64'
         run: echo "${{ needs.check.outputs.version }}" > CURRENT_VERSION
 
       - name: Commit version file
+        if: matrix.platform == 'linux/amd64'
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -116,14 +132,77 @@ jobs:
           git diff --cached --quiet || git commit -m "chore: bump version to ${{ needs.check.outputs.version }}"
           git push || echo "::warning::Could not push version file"
 
-      # ── Login: Docker Hub ──────────────────────────────────────────────────
+      # ── QEMU (needed for non-native platforms) ─────────────────────────────
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # ── Build test image for this platform ─────────────────────────────────
+      - name: "[${{ matrix.platform }}] Build test image"
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: test
+          load: true
+          tags: dufs-test:${{ matrix.tag }}
+          platforms: ${{ matrix.platform }}
+          build-args: |
+            DUFS_VERSION=${{ needs.check.outputs.version }}
+          cache-from: type=gha,scope=${{ matrix.platform }}
+          cache-to: type=gha,scope=${{ matrix.platform }},mode=max
+
+      # ── Verify ─────────────────────────────────────────────────────────────
+      - name: "[${{ matrix.platform }}] Verify image"
+        run: |
+          IMAGE="dufs-test:${{ matrix.tag }}"
+          PLAT="${{ matrix.platform }}"
+          UA="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120.0.0.0"
+
+          echo "── 1. Binary info ──"
+          docker run --rm --platform "$PLAT" --entrypoint sh "$IMAGE" \
+            -c "ls -lh /usr/local/bin/dufs"
+
+          echo "── 2. Start dufs ──"
+          docker run -d --name dufs-verify --platform "$PLAT" -p 5000:5000 \
+            -e DUFS_ALLOW_ALL=true "$IMAGE"
+          sleep 3
+
+          echo "── 3. HTTP response (as browser) ──"
+          BODY=$(curl -sf -A "$UA" http://localhost:5000/)
+          echo "Response length: $(echo "$BODY" | wc -c) bytes"
+          echo "── First 300 chars ──"
+          echo "$BODY" | head -c 300
+          echo ""
+
+          echo "── 4. Check Material UI ──"
+          if echo "$BODY" | grep -q "__INITIAL_DATA__"; then
+            echo "✅ Material UI SPA detected (__INITIAL_DATA__)"
+          else
+            echo "❌ Material UI NOT detected"
+            docker stop dufs-verify
+            exit 1
+          fi
+
+          docker stop dufs-verify
+          echo "✅ [${{ matrix.platform }}] All checks passed"
+
+  # ════════════════════════════════════════════════════════════════════════════
+  #  Job 3: Push multi-platform image (all platforms verified above)
+  # ════════════════════════════════════════════════════════════════════════════
+  push:
+    runs-on: ubuntu-latest
+    needs: [check, build]
+    steps:
+      - uses: actions/checkout@v4
+
       - name: Login to Docker Hub
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # ── Login: 阿里云 ACR ──────────────────────────────────────────────────
       - name: Login to Alibaba Cloud ACR
         uses: docker/login-action@v3
         with:
@@ -131,14 +210,12 @@ jobs:
           username: ${{ secrets.ACR_USERNAME }}
           password: ${{ secrets.ACR_PASSWORD }}
 
-      # ── QEMU + Buildx ─────────────────────────────────────────────────────
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # ── Image metadata & tags ──────────────────────────────────────────────
       - name: Docker metadata
         id: meta
         uses: docker/metadata-action@v5
@@ -155,22 +232,26 @@ jobs:
             org.opencontainers.image.vendor=take7yo
             org.opencontainers.image.version=${{ needs.check.outputs.version }}
 
-      # ── Build & push ───────────────────────────────────────────────────────
+      # ── Build & push multi-platform (reuses per-platform GHA cache) ────────
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
           context: .
-          platforms: linux/amd64,linux/arm64,linux/arm/v7
+          platforms: linux/amd64,linux/arm64,linux/arm/v7,linux/arm/v6,linux/386
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             DUFS_VERSION=${{ needs.check.outputs.version }}
-          cache-from: type=gha
+          cache-from: |
+            type=gha,scope=linux/amd64
+            type=gha,scope=linux/arm64
+            type=gha,scope=linux/arm/v7
+            type=gha,scope=linux/arm/v6
+            type=gha,scope=linux/386
           cache-to: type=gha,mode=max
 
-      # ── Summary ────────────────────────────────────────────────────────────
-      - name: Image digest
+      - name: Summary
         run: |
           echo "## 🐳 Docker Image Published" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
@@ -179,4 +260,6 @@ jobs:
           echo "| Docker Hub | \`${{ env.DOCKERHUB_REPO }}:v${{ needs.check.outputs.version }}\` |" >> "$GITHUB_STEP_SUMMARY"
           echo "| 阿里云 ACR | \`${{ env.ACR_REPO }}:v${{ needs.check.outputs.version }}\` |" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "**Platforms:** linux/amd64, linux/arm64, linux/arm/v7" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Platforms:** linux/amd64, linux/arm64, linux/arm/v7, linux/arm/v6, linux/386" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "✅ All 5 platforms verified before push" >> "$GITHUB_STEP_SUMMARY"

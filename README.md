@@ -1,6 +1,6 @@
 # 🐳 dufs-material-docker
 
-> **[dufs](https://github.com/sigoden/dufs) + [Material Design UI](https://github.com/TransparentLC/dufs-material-assets) — 打包为 Docker 镜像，多架构自动构建**
+> **基于 [dufs-material-assets](https://github.com/TransparentLC/dufs-material-assets) 预构建二进制，打包为 Docker 镜像，多架构自动构建**
 
 [![Docker Build](https://github.com/take7yo/dufs-material-docker/actions/workflows/docker-build.yml/badge.svg)](https://github.com/take7yo/dufs-material-docker/actions/workflows/docker-build.yml)
 [![Docker Hub](https://img.shields.io/docker/v/take7yo/dufs?label=Docker%20Hub&sort=semver)](https://hub.docker.com/r/take7yo/dufs)
@@ -11,10 +11,11 @@
 
 | 特性 | 说明 |
 |------|------|
-| **Material Design UI** | 内置 [dufs-material-assets](https://github.com/TransparentLC/dufs-material-assets)，替代原生 UI |
-| **多架构支持** | `linux/amd64` · `linux/arm64` · `linux/arm/v7` |
+| **Material Design UI** | 内置 [dufs-material-assets](https://github.com/TransparentLC/dufs-material-assets)，Vue 3 + Vuetify 现代界面 |
+| **开箱即用** | 使用 `dufs-mod` 预构建二进制，Material UI 已编译进二进制，无需额外挂载 |
+| **5 架构支持** | `amd64` · `arm64` · `armv7` · `armv6` · `i386` |
 | **自动更新** | 每日检查上游新版本，自动构建发布 |
-| **极简镜像** | 基于 `scratch`，仅包含二进制 + UI 资源 |
+| **极简镜像** | 基于 `scratch`，仅包含 dufs 二进制 + CA 证书 |
 | **双仓库推送** | Docker Hub (`take7yo/dufs`) + 阿里云 ACR (`registry.cn-hangzhou.aliyuncs.com/take7yo/dufs`) |
 
 ---
@@ -22,20 +23,11 @@
 ## 🚀 快速开始
 
 ```bash
-# 基本用法：挂载目录，开启所有权限
+# 基本用法
 docker run -d \
   --name dufs \
   -p 5000:5000 \
   -v /path/to/share:/data \
-  take7yo/dufs
-
-# 带认证
-docker run -d \
-  --name dufs \
-  -p 5000:5000 \
-  -v /path/to/share:/data \
-  -e DUFS_ALLOW_ALL=true \
-  -e DUFS_AUTH="user:pass@/:rw" \
   take7yo/dufs
 ```
 
@@ -70,11 +62,10 @@ docker compose up -d
 
 ## ⚙️ 环境变量
 
-所有 `DUFS_*` 环境变量均可直接使用（[完整列表](https://github.com/sigoden/dufs#cli-options)）：
+dufs 原生支持 `DUFS_*` 前缀环境变量（[完整列表](https://github.com/sigoden/dufs#cli-options)）：
 
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
-| `DUFS_SERVE_PATH` | `/data` | 服务目录路径 |
 | `DUFS_PORT` | `5000` | 监听端口 |
 | `DUFS_BIND` | `0.0.0.0` | 绑定地址 |
 | `DUFS_ALLOW_ALL` | *(未设置)* | 设为 `true` 开启所有操作权限 |
@@ -84,20 +75,15 @@ docker compose up -d
 
 ---
 
-## 🏗️ 架构
+## 🏗️ 支持架构
 
-```
-┌──────────────────────────────────────────────────────────┐
-│  GitHub Actions (daily schedule / release / manual)      │
-│                                                          │
-│  1. 检查 TransparentLC/dufs-material-assets 新版本       │
-│  2. docker buildx build --platform amd64,arm64,arm/v7   │
-│     ├─ 下载 sigoden/dufs 预编译二进制                     │
-│     ├─ 下载 material-assets-embed.zip                    │
-│     └─ 打包为 scratch 镜像                               │
-│  3. 推送至 Docker Hub + 阿里云 ACR                        │
-└──────────────────────────────────────────────────────────┘
-```
+| Docker 平台 | Rust Target | 说明 |
+|---|---|---|
+| `linux/amd64` | `x86_64-unknown-linux-musl` | 64-bit x86（主流服务器/桌面） |
+| `linux/arm64` | `aarch64-unknown-linux-musl` | 64-bit ARM（树莓派 4/5、Apple Silicon） |
+| `linux/arm/v7` | `armv7-unknown-linux-musleabihf` | 32-bit ARMv7（树莓派 2/3） |
+| `linux/arm/v6` | `arm-unknown-linux-musleabihf` | 32-bit ARMv6（树莓派 Zero/1） |
+| `linux/386` | `i686-unknown-linux-musl` | 32-bit x86 |
 
 ---
 
@@ -113,7 +99,6 @@ docker compose up -d
 ## 🔧 本地构建
 
 ```bash
-# 安装 buildx 插件
 docker buildx create --use
 
 # 本地单架构构建
@@ -121,7 +106,7 @@ docker buildx build --load -t dufs-local .
 
 # 多架构构建并推送
 docker buildx build \
-  --platform linux/amd64,linux/arm64,linux/arm/v7 \
+  --platform linux/amd64,linux/arm64,linux/arm/v7,linux/arm/v6,linux/386 \
   -t take7yo/dufs:latest \
   --push .
 ```
@@ -136,7 +121,7 @@ docker buildx build \
 
 | Secret | 值 | 获取方式 |
 |--------|-----|---------|
-| `DOCKERHUB_USERNAME` | 你的 Docker Hub 用户名 | — |
+| `DOCKERHUB_USERNAME` | Docker Hub 用户名 | — |
 | `DOCKERHUB_TOKEN` | Access Token | [hub.docker.com/settings/security](https://hub.docker.com/settings/security) → New Access Token |
 
 ### 阿里云 ACR (`registry.cn-hangzhou.aliyuncs.com`)
@@ -155,5 +140,5 @@ docker buildx build \
 MIT License — 详见 [LICENSE](./LICENSE)
 
 上游项目：
-- [sigoden/dufs](https://github.com/sigoden/dufs) — Apache-2.0
-- [TransparentLC/dufs-material-assets](https://github.com/TransparentLC/dufs-material-assets) — MIT
+- [sigoden/dufs](https://github.com/sigoden/dufs) — 文件服务器核心（Apache-2.0）
+- [TransparentLC/dufs-material-assets](https://github.com/TransparentLC/dufs-material-assets) — Material Design UI + 预构建二进制（MIT）
