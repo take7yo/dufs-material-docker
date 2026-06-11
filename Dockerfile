@@ -19,6 +19,7 @@
 FROM --platform=$BUILDPLATFORM alpine:3.22 AS builder
 
 ARG DUFS_VERSION=0.46.0
+ARG DUFS_REPO=sigoden/dufs
 ARG TARGETARCH
 ARG TARGETVARIANT
 
@@ -32,15 +33,16 @@ RUN set -eux; \
       arm)    RUST_TARGET="armv7-unknown-linux-musleabihf" ;; \
       *)      echo "Unsupported: ${TARGETARCH}" && exit 1 ;; \
     esac; \
-    URL="https://github.com/sigoden/dufs/releases/download/v${DUFS_VERSION}/dufs-v${DUFS_VERSION}-${RUST_TARGET}.tar.gz"; \
+    URL="https://github.com/${DUFS_REPO}/releases/download/v${DUFS_VERSION}/dufs-v${DUFS_VERSION}-${RUST_TARGET}.tar.gz"; \
     echo "Downloading dufs from: ${URL}"; \
     curl -fsSL "${URL}" | tar xz -C /tmp; \
     mv /tmp/dufs /usr/local/bin/dufs; \
     chmod +x /usr/local/bin/dufs
 
-# Download & extract material-assets
+# Download & extract material-assets (DUFS_ASSETS_VERSION defaults to DUFS_VERSION)
+ARG DUFS_ASSETS_VERSION
 RUN curl -fsSL \
-      "https://github.com/TransparentLC/dufs-material-assets/releases/download/v${DUFS_VERSION}/dufs-material-assets-embed.zip" \
+      "https://github.com/TransparentLC/dufs-material-assets/releases/download/v${DUFS_ASSETS_VERSION:-${DUFS_VERSION}}/dufs-material-assets-embed.zip" \
       -o /tmp/assets.zip && \
     mkdir -p /tmp/assets-extract /opt/dufs/assets && \
     unzip -q /tmp/assets.zip -d /tmp/assets-extract && \
