@@ -1,0 +1,97 @@
+###############################################################################
+#  Multi-arch Dockerfile: stock dufs + material-assets UI (--assets approach)
+#
+#  Used by the manual build workflow (docker-manual.yml).
+#  Downloads stock dufs binary from configurable repo + assets from
+#  TransparentLC/dufs-material-assets.
+#
+#  Build args:
+#    DUFS_VERSION        – dufs version        (required)
+#    DUFS_REPO           – binary source repo   (default: sigoden/dufs)
+#    DUFS_ASSETS_VERSION – assets version       (default: same as DUFS_VERSION)
+#
+#  Targets:
+#    test   – alpine-based image with shell (for CI verification)
+#    final  – scratch-based minimal image (default, for publishing)
+###############################################################################
+
+# ── 1. Builder ───────────────────────────────────────────────────────────────
+FROM --platform=$BUILDPLATFORM alpine:3.22 AS builder
+
+ARG DUFS_VERSION=0.46.0
+ARG DUFS_REPO=sigoden/dufs
+ARG DUFS_ASSETS_VERSION
+ARG TARGETARCH
+ARG TARGETVARIANT
+
+RUN apk add --no-cache curl unzip
+
+# Download stock dufs binary
+RUN set -eux; \
+    case "${TARGETARCH}" in \
+      amd64)  RUST_TARGET="x86_64-unknown-linux-musl"  ;; \
+      arm64)  RUST_TARGET="aarch64-unknown-linux-musl"  ;; \
+      arm)    RUST_TARGET="armv7-unknown-linux-musleabihf" ;; \
+      *)      echo "Unsupported: ${TARGETARCH}" && exit 1 ;; \
+    esac; \
+    URL="https://github.com/${DUFS_REPO}/releases/download/v${DUFS_VERSION}/dufs-v${DUFS_VERSION}-${RUST_TARGET}.tar.gz"; \
+    echo "Downloading dufs from: ${URL}"; \
+    curl -fsSL "${URL}" | tar xz -C /tmp; \
+    mv /tmp/dufs /usr/local/bin/dufs; \
+    chmod +x /usr/local/bin/dufs
+
+# Download & extract material-assets
+RUN curl -fsSL \
+      "https://github.com/TransparentLC/dufs-material-assets/releases/download/v${DUFS_ASSETS_VERSION:-${DUFS_VERSION}}/dufs-material-assets-embed.zip" \
+      -o /tmp/assets.zip && \
+    mkdir -p /tmp/assets-extract /opt/dufs/assets && \
+    unzip -q /tmp/assets.zip -d /tmp/assets-extract && \
+    CONTENTS=$(ls /tmp/assets-extract) && \
+    if [ "$(echo "$CONTENTS" | wc -l)" = 1 ] && [ -d "/tmp/assets-extract/$CONTENTS" ]; then \
+      cp -a /tmp/assets-extract/$CONTENTS/* /opt/dufs/assets/; \
+    else \
+      cp -a /tmp/assets-extract/* /opt/dufs/assets/; \
+    fi && \
+    rm -rf /tmp/assets.zip /tmp/assets-extract && \
+    echo "── Assets installed ──" && \
+    ls -la /opt/dufs/assets/
+
+# Smoke test
+RUN mkdir -p /data && \
+    sh -c ' \
+      UA="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120.0.0.0" && \
+      /usr/local/bin/dufs /data --assets /opt/dufs/assets --allow-all -p 5050 & \
+      sleep 2 && \
+      BODY=$(curl -sf -A "$UA" http://127.0.0.1:5050/) && \
+      if echo "$BODY" | grep -q "__INITIAL_DATA__"; then \
+        echo "✅ Material UI detected"; \
+      else \
+        echo "❌ Material UI NOT detected"; \
+        echo "$BODY" | head -c 300; \
+      fi && \
+      kill %1 2>/dev/null; true \
+    '
+
+# ── 2. Test image (alpine — has shell for CI verification) ───────────────────
+FROM alpine:3.22 AS test
+
+COPY --from=builder /usr/local/bin/dufs     /usr/local/bin/dufs
+COPY --from=builder /opt/dufs/assets        /opt/dufs/assets
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+
+EXPOSE 5000
+VOLUME ["/data"]
+ENTRYPOINT ["/usr/local/bin/dufs", "/data", "--assets", "/opt/dufs/assets"]
+CMD ["--allow-all", "--bind", "0.0.0.0", "--port", "5000"]
+
+# ── 3. Final image (scratch — minimal, no shell) ────────────────────────────
+FROM scratch AS final
+
+COPY --from=builder /usr/local/bin/dufs     /usr/local/bin/dufs
+COPY --from=builder /opt/dufs/assets        /opt/dufs/assets
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+
+EXPOSE 5000
+VOLUME ["/data"]
+ENTRYPOINT ["/usr/local/bin/dufs", "/data", "--assets", "/opt/dufs/assets"]
+CMD ["--allow-all", "--bind", "0.0.0.0", "--port", "5000"]

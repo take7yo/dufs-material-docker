@@ -1,8 +1,9 @@
 # 🐳 dufs-material-docker
 
-> **基于 [dufs-material-assets](https://github.com/TransparentLC/dufs-material-assets) 预构建二进制，打包为 Docker 镜像，多架构自动构建**
+> **基于 [dufs](https://github.com/sigoden/dufs) + [dufs-material-assets](https://github.com/TransparentLC/dufs-material-assets)，打包为 Docker 镜像，多架构自动构建**
 
 [![Docker Build](https://github.com/take7yo/dufs-material-docker/actions/workflows/docker-build.yml/badge.svg)](https://github.com/take7yo/dufs-material-docker/actions/workflows/docker-build.yml)
+[![Manual Build](https://github.com/take7yo/dufs-material-docker/actions/workflows/docker-manual.yml/badge.svg)](https://github.com/take7yo/dufs-material-docker/actions/workflows/docker-manual.yml)
 [![Docker Hub](https://img.shields.io/docker/v/take7yo/dufs?label=Docker%20Hub&sort=semver)](https://hub.docker.com/r/take7yo/dufs)
 
 ---
@@ -12,9 +13,10 @@
 | 特性 | 说明 |
 |------|------|
 | **Material Design UI** | 内置 [dufs-material-assets](https://github.com/TransparentLC/dufs-material-assets)，Vue 3 + Vuetify 现代界面 |
-| **开箱即用** | 使用 `dufs-mod` 预构建二进制，Material UI 已编译进二进制，无需额外挂载 |
-| **5 架构支持** | `amd64` · `arm64` · `armv7` · `armv6` · `i386` |
+| **开箱即用** | 自动构建使用 `dufs-mod` 预构建二进制（UI 已嵌入），手动构建使用 stock dufs + 分离 assets |
+| **多架构支持** | 自动构建：`amd64` · `arm64` · `armv7` · `armv6` · `i386`；手动构建：`amd64` · `arm64` · `armv7` |
 | **自动更新** | 每日检查上游新版本，自动构建发布 |
+| **手动构建** | 支持选择二进制来源（`sigoden/dufs` / `take7yo/dufs`），灵活指定版本 |
 | **极简镜像** | 基于 `scratch`，仅包含 dufs 二进制 + CA 证书 |
 | **双仓库推送** | Docker Hub (`take7yo/dufs`) + 阿里云 ACR (`registry.cn-hangzhou.aliyuncs.com/take7yo/dufs`) |
 
@@ -77,36 +79,66 @@ dufs 原生支持 `DUFS_*` 前缀环境变量（[完整列表](https://github.co
 
 ## 🏗️ 支持架构
 
-| Docker 平台 | Rust Target | 说明 |
-|---|---|---|
-| `linux/amd64` | `x86_64-unknown-linux-musl` | 64-bit x86（主流服务器/桌面） |
-| `linux/arm64` | `aarch64-unknown-linux-musl` | 64-bit ARM（树莓派 4/5、Apple Silicon） |
-| `linux/arm/v7` | `armv7-unknown-linux-musleabihf` | 32-bit ARMv7（树莓派 2/3） |
-| `linux/arm/v6` | `arm-unknown-linux-musleabihf` | 32-bit ARMv6（树莓派 Zero/1） |
-| `linux/386` | `i686-unknown-linux-musl` | 32-bit x86 |
+| Docker 平台 | Rust Target | 自动构建 | 手动构建 |
+|---|---|:---:|:---:|
+| `linux/amd64` | `x86_64-unknown-linux-musl` | ✅ | ✅ |
+| `linux/arm64` | `aarch64-unknown-linux-musl` | ✅ | ✅ |
+| `linux/arm/v7` | `armv7-unknown-linux-musleabihf` | ✅ | ✅ |
+| `linux/arm/v6` | `arm-unknown-linux-musleabihf` | ✅ | ❌ |
+| `linux/386` | `i686-unknown-linux-musl` | ✅ | ❌ |
+
+> 手动构建仅支持 3 架构，因为 stock dufs 上游仅发布这 3 个平台的二进制。
 
 ---
 
 ## 📦 镜像标签
 
+### 自动构建
+
 | 标签 | 说明 |
 |------|------|
-| `latest` | 最新版本 |
+| `latest` | 最新自动构建版本 |
 | `v0.46.0` | 指定版本号（带 `v` 前缀） |
+
+自动构建每日检查 [TransparentLC/dufs-material-assets](https://github.com/TransparentLC/dufs-material-assets) 新版本，使用 `dufs-mod` 预构建二进制（Material UI 已嵌入）。
+
+### 手动构建（`-fix` 后缀）
+
+| 标签 | 说明 |
+|------|------|
+| `latest` | 最新手动构建版本（会覆盖自动构建的 `latest`） |
+| `v0.46.0-fix` | 指定版本号（带 `-fix` 后缀） |
+
+手动构建支持选择二进制来源：
+
+| 二进制来源 | 下载地址 | 说明 |
+|---|---|---|
+| `sigoden/dufs` | [releases](https://github.com/sigoden/dufs/releases) | 原版 dufs，stock 二进制 + 分离 assets |
+| `take7yo/dufs` | [releases](https://github.com/take7yo/dufs/releases) | fork 版本，release tag 带 `-fix` 后缀 |
+
+在 [Actions → Manual Build & Publish (-fix)](https://github.com/take7yo/dufs-material-docker/actions/workflows/docker-manual.yml) 中手动触发。
 
 ---
 
 ## 🔧 本地构建
 
 ```bash
+git clone https://github.com/take7yo/dufs-material-docker.git
+cd dufs-material-docker
+
 docker buildx create --use
 
-# 本地单架构构建
+# 自动构建版（dufs-mod 嵌入式，5 架构）
 docker buildx build --load -t dufs-local .
+
+# 手动构建版（stock dufs + assets，3 架构）
+docker buildx build --load -t dufs-local -f Dockerfile.stock \
+  --build-arg DUFS_VERSION=0.46.0 \
+  --build-arg DUFS_REPO=sigoden/dufs .
 
 # 多架构构建并推送
 docker buildx build \
-  --platform linux/amd64,linux/arm64,linux/arm/v7,linux/arm/v6,linux/386 \
+  --platform linux/amd64,linux/arm64,linux/arm/v7 \
   -t take7yo/dufs:latest \
   --push .
 ```
@@ -142,3 +174,4 @@ MIT License — 详见 [LICENSE](./LICENSE)
 上游项目：
 - [sigoden/dufs](https://github.com/sigoden/dufs) — 文件服务器核心（Apache-2.0）
 - [TransparentLC/dufs-material-assets](https://github.com/TransparentLC/dufs-material-assets) — Material Design UI + 预构建二进制（MIT）
+- [take7yo/dufs](https://github.com/take7yo/dufs) — dufs fork 版本
