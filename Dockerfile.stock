@@ -28,11 +28,12 @@ RUN apk add --no-cache curl unzip
 
 # Download stock dufs binary
 RUN set -eux; \
-    case "${TARGETARCH}" in \
-      amd64)  RUST_TARGET="x86_64-unknown-linux-musl"  ;; \
-      arm64)  RUST_TARGET="aarch64-unknown-linux-musl"  ;; \
-      arm)    RUST_TARGET="armv7-unknown-linux-musleabihf" ;; \
-      *)      echo "Unsupported: ${TARGETARCH}" && exit 1 ;; \
+    case "${TARGETARCH}${TARGETVARIANT}" in \
+      amd64)           RUST_TARGET="x86_64-unknown-linux-musl"      ;; \
+      arm64)           RUST_TARGET="aarch64-unknown-linux-musl"      ;; \
+      armv7)           RUST_TARGET="armv7-unknown-linux-musleabihf"  ;; \
+      armv6|arm)       RUST_TARGET="arm-unknown-linux-musleabihf"    ;; \
+      *)               echo "Unsupported: ${TARGETARCH}${TARGETVARIANT}" && exit 1 ;; \
     esac; \
     URL="https://github.com/${DUFS_REPO}/releases/download/v${DUFS_VERSION}/dufs-v${DUFS_VERSION}-${RUST_TARGET}.tar.gz"; \
     echo "Downloading dufs from: ${URL}"; \

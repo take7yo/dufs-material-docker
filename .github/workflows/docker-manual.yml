@@ -129,6 +129,8 @@ jobs:
             tag: arm64
           - platform: linux/arm/v7
             tag: armv7
+          - platform: linux/arm/v6
+            tag: armv6
     steps:
       - uses: actions/checkout@v4
 
@@ -237,7 +239,7 @@ jobs:
         with:
           context: .
           file: Dockerfile.stock
-          platforms: linux/amd64,linux/arm64,linux/arm/v7
+          platforms: linux/amd64,linux/arm64,linux/arm/v7,linux/arm/v6
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
@@ -249,6 +251,7 @@ jobs:
             type=gha,scope=manual-linux/amd64
             type=gha,scope=manual-linux/arm64
             type=gha,scope=manual-linux/arm/v7
+            type=gha,scope=manual-linux/arm/v6
           cache-to: type=gha,mode=max
 
       - name: Summary

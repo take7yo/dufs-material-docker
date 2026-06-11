@@ -14,7 +14,7 @@
 |------|------|
 | **Material Design UI** | 内置 [dufs-material-assets](https://github.com/TransparentLC/dufs-material-assets)，Vue 3 + Vuetify 现代界面 |
 | **开箱即用** | 自动构建使用 `dufs-mod` 预构建二进制（UI 已嵌入），手动构建使用 stock dufs + 分离 assets |
-| **多架构支持** | 自动构建：`amd64` · `arm64` · `armv7` · `armv6` · `i386`；手动构建：`amd64` · `arm64` · `armv7` |
+| **多架构支持** | 自动构建：`amd64` · `arm64` · `armv7` · `armv6` · `i386`；手动构建：`amd64` · `arm64` · `armv7` · `armv6` |
 | **自动更新** | 每日检查上游新版本，自动构建发布 |
 | **手动构建** | 支持选择二进制来源（`sigoden/dufs` / `take7yo/dufs`），灵活指定版本 |
 | **极简镜像** | 基于 `scratch`，仅包含 dufs 二进制 + CA 证书 |
@@ -84,10 +84,10 @@ dufs 原生支持 `DUFS_*` 前缀环境变量（[完整列表](https://github.co
 | `linux/amd64` | `x86_64-unknown-linux-musl` | ✅ | ✅ |
 | `linux/arm64` | `aarch64-unknown-linux-musl` | ✅ | ✅ |
 | `linux/arm/v7` | `armv7-unknown-linux-musleabihf` | ✅ | ✅ |
-| `linux/arm/v6` | `arm-unknown-linux-musleabihf` | ✅ | ❌ |
+| `linux/arm/v6` | `arm-unknown-linux-musleabihf` | ✅ | ✅ |
 | `linux/386` | `i686-unknown-linux-musl` | ✅ | ❌ |
 
-> 手动构建仅支持 3 架构，因为 stock dufs 上游仅发布这 3 个平台的二进制。
+> 手动构建支持 4 架构，不支持 `i386`（stock dufs 上游未发布该平台二进制）。
 
 ---
 
@@ -100,7 +100,7 @@ dufs 原生支持 `DUFS_*` 前缀环境变量（[完整列表](https://github.co
 | `latest` | 最新自动构建版本 |
 | `v0.46.0` | 指定版本号（带 `v` 前缀） |
 
-自动构建每日检查 [TransparentLC/dufs-material-assets](https://github.com/TransparentLC/dufs-material-assets) 新版本，使用 `dufs-mod` 预构建二进制（Material UI 已嵌入）。
+自动构建每日检查 [TransparentLC/dufs-material-assets](https://github.com/TransparentLC/dufs-material-assets) 新版本，使用该仓库发布的 `dufs-mod` 预构建二进制（Material UI 已直接编译嵌入二进制，无需额外资源包）。
 
 ### 手动构建（`-fix` 后缀）
 
@@ -109,7 +109,7 @@ dufs 原生支持 `DUFS_*` 前缀环境变量（[完整列表](https://github.co
 | `latest` | 最新手动构建版本（会覆盖自动构建的 `latest`） |
 | `v0.46.0-fix` | 指定版本号（带 `-fix` 后缀） |
 
-手动构建支持选择二进制来源：
+手动构建使用 stock dufs 二进制 + [dufs-material-assets](https://github.com/TransparentLC/dufs-material-assets) 资源包组合方式（通过 `--assets` 参数加载 UI），支持选择二进制来源：
 
 | 二进制来源 | 下载地址 | 说明 |
 |---|---|---|
