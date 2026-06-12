@@ -109,46 +109,35 @@ dufs 原生支持 `DUFS_*` 前缀环境变量（[完整列表](https://github.co
 
 ### 自动构建
 
-自动构建提供两种版本：
+| 版本类型 | 标签格式 | 说明 | 工作流 |
+|---------|---------|------|--------|
+| **Assets 版** ⭐ | `v0.46.0` + `latest` | 默认推荐，源码编译 + assets 资源包 | [docker-build-assets.yml](.github/workflows/docker-build-assets.yml) |
+| 嵌入式 UI 版 | `v0.46.0-embed` | 预构建二进制，UI 嵌入 | [docker-build.yml](.github/workflows/docker-build.yml) |
 
-#### 1. 嵌入式 UI 版本（`v` 前缀）
+两个版本均支持 5 架构：`amd64` · `arm64` · `arm/v7` · `arm/v6` · `i386`
 
-| 标签 | 说明 |
-|------|------|
-| `v0.46.0` | 指定版本号（带 `v` 前缀） |
-
-基于 [TransparentLC/dufs-material-assets](https://github.com/TransparentLC/dufs-material-assets) 发布的 `dufs-mod` 预构建二进制，Material UI 已直接编译嵌入二进制。
-
-- 支持 5 架构：`amd64` · `arm64` · `arm/v7` · `arm/v6` · `i386`
-- 不支持自定义界面
-- 工作流：[docker-build.yml](.github/workflows/docker-build.yml)
-
-#### 2. Assets 版本（`av` 前缀）⭐ 推荐
-
-| 标签 | 说明 |
-|------|------|
-| `latest` | 最新 assets 版本（默认推荐） |
-| `av0.46.0` | 指定版本号（带 `av` 前缀） |
+#### Assets 版（默认推荐）
 
 基于 [sigoden/dufs](https://github.com/sigoden/dufs) 源码编译 + [dufs-material-assets](https://github.com/TransparentLC/dufs-material-assets) 资源包，通过 `--assets` 参数加载 UI。
 
-- 支持 5 架构：`amd64` · `arm64` · `arm/v7` · `arm/v6` · `i386`
-- 支持自定义界面和 `config.yml` 配置
-- 工作流：[docker-build-assets.yml](.github/workflows/docker-build-assets.yml)
+- ✅ 支持自定义界面和 `config.yml` 配置
+- ✅ 源码编译，透明可审计
+- ✅ `latest` 标签指向此版本
 
-### 手动构建（`-fix` 后缀）
+#### 嵌入式 UI 版（补充版本）
 
-| 标签 | 说明 |
-|------|------|
-| `v0.46.0-fix` | 指定版本号（带 `-fix` 后缀） |
+基于 [TransparentLC/dufs-material-assets](https://github.com/TransparentLC/dufs-material-assets) 发布的 `dufs-mod` 预构建二进制，Material UI 已直接编译嵌入二进制。
 
-手动构建使用 [sigoden/dufs](https://github.com/sigoden/dufs) 源码编译 + [dufs-material-assets](https://github.com/TransparentLC/dufs-material-assets) 资源包组合方式：
+- ⚠️ 不支持自定义界面
+- ⚠️ 依赖预构建二进制
 
-- 支持 5 架构：`amd64` · `arm64` · `arm/v7` · `arm/v6` · `i386`
-- 支持自定义界面和 `config.yml` 配置
-- 通过 Rust cross 实现跨平台编译
+### 手动构建
 
-在 [Actions → Manual Build & Publish (-fix)](https://github.com/take7yo/dufs-material-docker/actions/workflows/docker-manual.yml) 中手动触发。
+| 标签格式 | 说明 | 工作流 |
+|---------|------|--------|
+| `v0.46.0-fix` | 手动触发，源码编译 | [docker-manual.yml](.github/workflows/docker-manual.yml) |
+
+支持 5 架构，与 Assets 版相同的构建方式，用于紧急修复或特殊需求。
 
 ---
 ## 🔧 本地构建

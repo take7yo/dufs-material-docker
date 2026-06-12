@@ -161,7 +161,7 @@ jobs:
             ${{ env.DOCKERHUB_REPO }}
             ${{ env.ACR_REPO }}
           tags: |
-            type=raw,value=av${{ needs.check.outputs.version }}
+            type=raw,value=v${{ needs.check.outputs.version }}
             type=raw,value=latest
           labels: |
             org.opencontainers.image.title=dufs-material
@@ -191,6 +191,6 @@ jobs:
         run: |
           echo "## Docker Image Published (Assets Version)" >> "$GITHUB_STEP_SUMMARY"
           echo "Version: ${{ needs.check.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "Tag: av${{ needs.check.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Tag: v${{ needs.check.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"
           echo "Platforms: linux/amd64, linux/arm64, linux/arm/v7, linux/arm/v6, linux/386" >> "$GITHUB_STEP_SUMMARY"
           echo "Build method: Source compilation (Rust + cross)" >> "$GITHUB_STEP_SUMMARY"
