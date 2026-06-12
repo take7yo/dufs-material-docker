@@ -2,7 +2,6 @@
 #  Multi-arch Dockerfile: pre-built dufs binary + material-assets UI
 #
 #  Expects pre-built dufs binary and assets/ directory in the build context.
-#  Binary is compiled in the CI workflow using cross (Rust cross-compilation).
 #
 #  Targets:
 #    test   – debian-based image with shell (for CI verification)
@@ -19,8 +18,9 @@ RUN chmod +x /bin/dufs
 
 EXPOSE 5000
 VOLUME ["/data"]
-ENTRYPOINT ["/bin/dufs", "/data", "--assets", "/opt/dufs/assets"]
-CMD ["--allow-all", "--bind", "0.0.0.0", "--port", "5000"]
+WORKDIR /data
+ENTRYPOINT ["/bin/dufs"]
+CMD ["--assets", "/opt/dufs/assets"]
 
 # ── 2. Final image (scratch — minimal, no shell) ────────────────────────────
 FROM scratch AS final
@@ -30,5 +30,6 @@ COPY assets/  /opt/dufs/assets/
 
 EXPOSE 5000
 VOLUME ["/data"]
-ENTRYPOINT ["/bin/dufs", "/data", "--assets", "/opt/dufs/assets"]
-CMD ["--allow-all", "--bind", "0.0.0.0", "--port", "5000"]
+WORKDIR /data
+ENTRYPOINT ["/bin/dufs"]
+CMD ["--assets", "/opt/dufs/assets"]
