@@ -8,8 +8,10 @@
 name: Build (Assets)
 
 on:
-  schedule:
-    - cron: "27 3 * * *"
+  push:
+    branches: [main]
+  # schedule:
+  #   - cron: "27 3 * * *"
   release:
     types: [published]
   workflow_dispatch:
@@ -136,6 +138,10 @@ jobs:
         with:
           tool: cross
 
+      - name: Install musl-tools
+        if: ${{ !matrix.use_cross }}
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+
       - name: Clone dufs source
         run: |
           git clone --depth 1 --branch "v${{ needs.check.outputs.version }}" \
@@ -207,7 +213,7 @@ jobs:
           path: dufs
           retention-days: 1
 
-  push:
+  publish:
     runs-on: ubuntu-latest
     needs: [check, build]
     steps:
