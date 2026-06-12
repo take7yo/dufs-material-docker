@@ -11,10 +11,8 @@
 # ── 1. Test image (debian — has shell for CI verification) ──────────────────
 FROM debian:bookworm-slim AS test
 
-COPY dufs     /bin/dufs
+COPY --chmod=755 dufs /bin/dufs
 COPY assets/  /opt/dufs/assets/
-
-RUN chmod +x /bin/dufs
 
 EXPOSE 5000
 VOLUME ["/data"]
@@ -24,7 +22,7 @@ ENTRYPOINT ["/bin/dufs"]
 # ── 2. Final image (scratch — minimal, no shell) ────────────────────────────
 FROM scratch AS final
 
-COPY --from=test /bin/dufs /bin/dufs
+COPY --chmod=755 dufs /bin/dufs
 COPY assets/  /opt/dufs/assets/
 
 EXPOSE 5000
