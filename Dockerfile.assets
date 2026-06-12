@@ -20,16 +20,14 @@ EXPOSE 5000
 VOLUME ["/data"]
 WORKDIR /data
 ENTRYPOINT ["/bin/dufs"]
-CMD ["--assets", "/opt/dufs/assets"]
 
 # ── 2. Final image (scratch — minimal, no shell) ────────────────────────────
 FROM scratch AS final
 
-COPY dufs     /bin/dufs
+COPY --from=test /bin/dufs /bin/dufs
 COPY assets/  /opt/dufs/assets/
 
 EXPOSE 5000
 VOLUME ["/data"]
 WORKDIR /data
 ENTRYPOINT ["/bin/dufs"]
-CMD ["--assets", "/opt/dufs/assets"]
