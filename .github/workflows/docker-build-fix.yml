@@ -105,8 +105,19 @@ jobs:
 
       - name: Clone dufs source
         run: |
-          git clone --depth 1 --branch "v${{ needs.check.outputs.version }}" \
-            https://github.com/${{ github.event.inputs.binary_source }}.git dufs-src
+          BINARY_SOURCE="${{ github.event.inputs.binary_source }}"
+          VERSION="${{ needs.check.outputs.version }}"
+          
+          # take7yo/dufs uses -fix suffix in tags
+          if [ "$BINARY_SOURCE" = "take7yo/dufs" ]; then
+            GIT_TAG="v${VERSION}-fix"
+          else
+            GIT_TAG="v${VERSION}"
+          fi
+          
+          echo "Cloning ${BINARY_SOURCE} at tag ${GIT_TAG}"
+          git clone --depth 1 --branch "${GIT_TAG}" \
+            "https://github.com/${BINARY_SOURCE}.git" dufs-src
 
       - name: Download assets
         run: |
