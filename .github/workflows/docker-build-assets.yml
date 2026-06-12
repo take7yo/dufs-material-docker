@@ -1,6 +1,7 @@
 # docker-build-assets.yml
-# Build # Build & Publish Docker Image — Source compilation with Material Assets UI Publish Docker Image — Source compilation with Material Assets UI
+# Build & Publish Docker Image — Cross-compiled with Material Assets UI
 # Checks TransparentLC/dufs-material-assets for new releases
+# Builds Rust binary in the workflow using cross, then packages in Docker
 # Supports 5 Linux platforms: amd64, arm64, armv7, armv6, i386
 name: Build & Publish Docker Image (Assets Version)
 on:
@@ -78,20 +79,32 @@ jobs:
         include:
           - platform: linux/amd64
             tag: amd64
+            rust_target: x86_64-unknown-linux-musl
+            use_cross: false
           - platform: linux/arm64
             tag: arm64
+            rust_target: aarch64-unknown-linux-musl
+            use_cross: true
           - platform: linux/arm/v7
             tag: armv7
+            rust_target: armv7-unknown-linux-musleabihf
+            use_cross: true
           - platform: linux/arm/v6
             tag: armv6
+            rust_target: arm-unknown-linux-musleabihf
+            use_cross: true
           - platform: linux/386
             tag: i386
+            rust_target: i686-unknown-linux-musl
+            use_cross: true
     steps:
       - uses: actions/checkout@v4
-      - name: Save version
+
+      - name: Save current version
         if: matrix.platform == 'linux/amd64'
         run: echo "${{ needs.check.outputs.version }}" > CURRENT_VERSION_ASSETS
-      - name: Commit version
+
+      - name: Commit version file
         if: matrix.platform == 'linux/amd64'
         run: |
           git config user.name "github-actions[bot]"
@@ -99,11 +112,52 @@ jobs:
           git add CURRENT_VERSION_ASSETS
           git diff --cached --quiet || git commit -m "chore: bump assets version to ${{ needs.check.outputs.version }}"
           git push || echo "::warning::Could not push"
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cross
+        if: matrix.use_cross
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cross
+
+      - name: Clone dufs source
+        run: |
+          git clone --depth 1 --branch "v${{ needs.check.outputs.version }}" \
+            https://github.com/sigoden/dufs.git dufs-src
+
+      - name: Download assets
+        run: |
+          curl -fsSL "https://github.com/TransparentLC/dufs-material-assets/releases/download/v${{ needs.check.outputs.assets_version }}/dufs-material-assets-embed.zip" -o assets.zip
+          mkdir -p assets
+          unzip -q assets.zip -d assets-tmp
+          CONTENTS=$(ls assets-tmp)
+          if [ "$(echo "$CONTENTS" | wc -l)" = 1 ] && [ -d "assets-tmp/$CONTENTS" ]; then
+            cp -a assets-tmp/$CONTENTS/* assets/
+          else
+            cp -a assets-tmp/* assets/
+          fi
+          rm -rf assets.zip assets-tmp
+
+      - name: Build dufs binary
+        working-directory: dufs-src
+        run: |
+          if [ "${{ matrix.use_cross }}" = "true" ]; then
+            cross build --locked --release --target=${{ matrix.rust_target }}
+          else
+            cargo build --locked --release --target=${{ matrix.rust_target }}
+          fi
+          cp target/${{ matrix.rust_target }}/release/dufs ../dufs
+          chmod +x ../dufs
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-      - name: Build test
+
+      - name: "[${{ matrix.platform }}] Build test image"
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -112,19 +166,16 @@ jobs:
           load: true
           tags: dufs-assets-test:${{ matrix.tag }}
           platforms: ${{ matrix.platform }}
-          build-args: |
-            DUFS_VERSION=${{ needs.check.outputs.version }}
-            DUFS_ASSETS_VERSION=${{ needs.check.outputs.assets_version }}
-          cache-from: type=gha,scope=src-${{ matrix.platform }}
-          cache-to: type=gha,scope=src-${{ matrix.platform }},mode=max
-      - name: Verify
+
+      - name: "[${{ matrix.platform }}] Verify image"
         run: |
           IMAGE="dufs-assets-test:${{ matrix.tag }}"
           PLAT="${{ matrix.platform }}"
+          UA="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120.0.0.0"
           docker run --rm --platform "$PLAT" --entrypoint sh "$IMAGE" -c "ls -lh /usr/local/bin/dufs"
           docker run -d --name dufs-verify --platform "$PLAT" -p 5002:5000 -e DUFS_ALLOW_ALL=true "$IMAGE"
           sleep 3
-          BODY=$(curl -sf http://localhost:5002/)
+          BODY=$(curl -sf -A "$UA" http://localhost:5002/)
           if echo "$BODY" | grep -q "__INITIAL_DATA__"; then
             echo "Material UI detected"
           else
@@ -139,59 +190,123 @@ jobs:
     needs: [check, build]
     steps:
       - uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cross
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cross
+
+      - name: Clone dufs source
+        run: |
+          git clone --depth 1 --branch "v${{ needs.check.outputs.version }}" \
+            https://github.com/sigoden/dufs.git dufs-src
+
+      - name: Download assets
+        run: |
+          curl -fsSL "https://github.com/TransparentLC/dufs-material-assets/releases/download/v${{ needs.check.outputs.assets_version }}/dufs-material-assets-embed.zip" -o assets.zip
+          mkdir -p assets
+          unzip -q assets.zip -d assets-tmp
+          CONTENTS=$(ls assets-tmp)
+          if [ "$(echo "$CONTENTS" | wc -l)" = 1 ] && [ -d "assets-tmp/$CONTENTS" ]; then
+            cp -a assets-tmp/$CONTENTS/* assets/
+          else
+            cp -a assets-tmp/* assets/
+          fi
+          rm -rf assets.zip assets-tmp
+
+      - name: Build all platform binaries
+        run: |
+          PLATFORMS="amd64:x86_64-unknown-linux-musl:false arm64:aarch64-unknown-linux-musl:true armv7:armv7-unknown-linux-musleabihf:true armv6:arm-unknown-linux-musleabihf:true i386:i686-unknown-linux-musl:true"
+          for ENTRY in $PLATFORMS; do
+            TAG=$(echo "$ENTRY" | cut -d: -f1)
+            TARGET=$(echo "$ENTRY" | cut -d: -f2)
+            USE_CROSS=$(echo "$ENTRY" | cut -d: -f3)
+            echo "=== Building for $TAG ($TARGET) ==="
+            cd dufs-src
+            if [ "$USE_CROSS" = "true" ]; then
+              cross build --locked --release --target="$TARGET"
+            else
+              cargo build --locked --release --target="$TARGET"
+            fi
+            cd ..
+            mkdir -p "bin/$TAG"
+            cp "dufs-src/target/$TARGET/release/dufs" "bin/$TAG/dufs"
+            chmod +x "bin/$TAG/dufs"
+            echo "Built: bin/$TAG/dufs ($(du -h "bin/$TAG/dufs" | cut -f1))"
+          done
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Login to Docker Hub
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
+
       - name: Login to ACR
         uses: docker/login-action@v3
         with:
           registry: ${{ env.ACR_REGISTRY }}
           username: ${{ secrets.ACR_USERNAME }}
           password: ${{ secrets.ACR_PASSWORD }}
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-      - name: Docker metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: |
-            ${{ env.DOCKERHUB_REPO }}
-            ${{ env.ACR_REPO }}
-          tags: |
-            type=raw,value=v${{ needs.check.outputs.version }}
-            type=raw,value=latest
-          labels: |
-            org.opencontainers.image.title=dufs-material
-            org.opencontainers.image.description=Dufs file server with Material Design UI (assets version)
-            org.opencontainers.image.vendor=take7yo
-            org.opencontainers.image.version=${{ needs.check.outputs.version }}
-      - name: Build and push
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: Dockerfile.assets
-          platforms: linux/amd64,linux/arm64,linux/arm/v7,linux/arm/v6,linux/386
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          build-args: |
-            DUFS_VERSION=${{ needs.check.outputs.version }}
-            DUFS_ASSETS_VERSION=${{ needs.check.outputs.assets_version }}
-          cache-from: |
-            type=gha,scope=src-linux/amd64
-            type=gha,scope=src-linux/arm64
-            type=gha,scope=src-linux/arm/v7
-            type=gha,scope=src-linux/arm/v6
-            type=gha,scope=src-linux/386
-          cache-to: type=gha,mode=max
+
+      - name: Build and push per-platform images
+        run: |
+          VERSION="${{ needs.check.outputs.version }}"
+          PLATFORMS="linux/amd64:amd64 linux/arm64:arm64 linux/arm/v7:armv7 linux/arm/v6:armv6 linux/386:i386"
+          for ENTRY in $PLATFORMS; do
+            PLAT=$(echo "$ENTRY" | cut -d: -f1)
+            TAG=$(echo "$ENTRY" | cut -d: -f2)
+            echo "=== Building and pushing $PLAT ==="
+            cp "bin/$TAG/dufs" ./dufs
+            TAG_ARGS=""
+            TAG_ARGS="$TAG_ARGS --tag ${{ env.DOCKERHUB_REPO }}:v${VERSION}-${TAG}"
+            TAG_ARGS="$TAG_ARGS --tag ${{ env.ACR_REPO }}:v${VERSION}-${TAG}"
+            docker buildx build \
+              --platform "$PLAT" \
+              --file Dockerfile.assets \
+              --target final \
+              --provenance=false \
+              --push \
+              --label "org.opencontainers.image.title=dufs-material" \
+              --label "org.opencontainers.image.description=Dufs file server with Material Design UI (assets version)" \
+              --label "org.opencontainers.image.vendor=take7yo" \
+              --label "org.opencontainers.image.version=${VERSION}" \
+              $TAG_ARGS \
+              .
+            echo "Pushed: $PLAT"
+            rm -f ./dufs
+          done
+
+      - name: Create multi-platform manifest
+        run: |
+          VERSION="${{ needs.check.outputs.version }}"
+          TAG_NAMES="v${VERSION} latest"
+          for REGISTRY in "${{ env.DOCKERHUB_REPO }}" "${{ env.ACR_REPO }}"; do
+            for TAG_NAME in $TAG_NAMES; do
+              FULL_TAG="${REGISTRY}:${TAG_NAME}"
+              PLATFORM_IMAGES=""
+              for PLAT_TAG in amd64 arm64 armv7 armv6 i386; do
+                PLATFORM_IMAGES="$PLATFORM_IMAGES ${REGISTRY}:v${VERSION}-${PLAT_TAG}"
+              done
+              echo "Creating manifest: $FULL_TAG"
+              docker buildx imagetools create \
+                --tag "$FULL_TAG" \
+                $PLATFORM_IMAGES || echo "::warning::Could not create manifest for $FULL_TAG"
+            done
+          done
+
       - name: Summary
         run: |
           echo "## Docker Image Published (Assets Version)" >> "$GITHUB_STEP_SUMMARY"
           echo "Version: ${{ needs.check.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"
           echo "Tag: v${{ needs.check.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"
           echo "Platforms: linux/amd64, linux/arm64, linux/arm/v7, linux/arm/v6, linux/386" >> "$GITHUB_STEP_SUMMARY"
-          echo "Build method: Source compilation (Rust + cross)" >> "$GITHUB_STEP_SUMMARY"
+          echo "Build method: Cross-compiled (Rust stable + cross)" >> "$GITHUB_STEP_SUMMARY"

@@ -1,120 +1,36 @@
 ###############################################################################
-#  Multi-arch Dockerfile: build dufs from source + material-assets UI
+#  Multi-arch Dockerfile: pre-built dufs binary + material-assets UI
 #
-#  Compiles dufs from Rust source using cross-compilation, then combines with
-#  material-assets for the UI. Supports all 5 Linux platforms including i386.
-#
-#  Build args:
-#    DUFS_VERSION        – dufs version        (required)
-#    DUFS_ASSETS_VERSION – assets version       (default: same as DUFS_VERSION)
+#  Expects pre-built dufs binary and assets/ directory in the build context.
+#  Binary is compiled in the CI workflow using cross (Rust cross-compilation).
 #
 #  Targets:
 #    test   – alpine-based image with shell (for CI verification)
 #    final  – scratch-based minimal image (default, for publishing)
 ###############################################################################
 
-# ── 1. Builder: compile dufs from source ─────────────────────────────────────
-FROM --platform=$BUILDPLATFORM rust:1.82-alpine AS builder
+# ── 0. Certs stage (provides CA certificates for scratch image) ─────────────
+FROM alpine:3.22 AS certs
 
-ARG DUFS_VERSION=0.46.0
-ARG DUFS_ASSETS_VERSION
-ARG TARGETARCH
-ARG TARGETVARIANT
-
-RUN apk add --no-cache \
-    curl \
-    unzip \
-    build-base \
-    musl-dev \
-    perl \
-    git
-
-# Install cross-rs for cross-compilation
-RUN cargo install cross --git https://github.com/cross-rs/cross
-
-# Determine Rust target based on platform
-RUN set -eux; \
-    case "${TARGETARCH}${TARGETVARIANT}" in \
-      amd64)           RUST_TARGET="x86_64-unknown-linux-musl"      ;; \
-      arm64)           RUST_TARGET="aarch64-unknown-linux-musl"      ;; \
-      armv7)           RUST_TARGET="armv7-unknown-linux-musleabihf"  ;; \
-      armv6|arm)       RUST_TARGET="arm-unknown-linux-musleabihf"    ;; \
-      386)             RUST_TARGET="i686-unknown-linux-musl"         ;; \
-      *)               echo "Unsupported: ${TARGETARCH}${TARGETVARIANT}" && exit 1 ;; \
-    esac; \
-    echo "${RUST_TARGET}" > /tmp/rust-target
-
-# Clone and build dufs
-RUN set -eux; \
-    RUST_TARGET=$(cat /tmp/rust-target); \
-    git clone --depth 1 --branch "v${DUFS_VERSION}" \
-      https://github.com/sigoden/dufs.git /tmp/dufs-src; \
-    cd /tmp/dufs-src; \
-    if [ "$(uname -m)" = "x86_64" ] && [ "$RUST_TARGET" = "x86_64-unknown-linux-musl" ]; then \
-      echo "Native build for x86_64"; \
-      cargo build --locked --release --target="${RUST_TARGET}"; \
-    else \
-      echo "Cross-compiling for ${RUST_TARGET}"; \
-      cross build --locked --release --target="${RUST_TARGET}"; \
-    fi; \
-    cp "target/${RUST_TARGET}/release/dufs" /usr/local/bin/dufs; \
-    chmod +x /usr/local/bin/dufs; \
-    strip /usr/local/bin/dufs || true
-
-# Download & extract material-assets
-RUN curl -fsSL \
-      "https://github.com/TransparentLC/dufs-material-assets/releases/download/v${DUFS_ASSETS_VERSION:-${DUFS_VERSION}}/dufs-material-assets-embed.zip" \
-      -o /tmp/assets.zip && \
-    mkdir -p /tmp/assets-extract /opt/dufs/assets && \
-    unzip -q /tmp/assets.zip -d /tmp/assets-extract && \
-    CONTENTS=$(ls /tmp/assets-extract) && \
-    if [ "$(echo "$CONTENTS" | wc -l)" = 1 ] && [ -d "/tmp/assets-extract/$CONTENTS" ]; then \
-      cp -a /tmp/assets-extract/$CONTENTS/* /opt/dufs/assets/; \
-    else \
-      cp -a /tmp/assets-extract/* /opt/dufs/assets/; \
-    fi && \
-    rm -rf /tmp/assets.zip /tmp/assets-extract && \
-    echo "── Assets installed ──" && \
-    ls -la /opt/dufs/assets/
-
-# Smoke test (only for native builds)
-RUN set -eux; \
-    RUST_TARGET=$(cat /tmp/rust-target); \
-    if [ "$(uname -m)" = "x86_64" ] && [ "$RUST_TARGET" = "x86_64-unknown-linux-musl" ]; then \
-      UA="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120.0.0.0"; \
-      mkdir -p /data; \
-      /usr/local/bin/dufs /data --assets /opt/dufs/assets --allow-all -p 5050 & \
-      sleep 2; \
-      BODY=$(curl -sf -A "$UA" http://127.0.0.1:5050/); \
-      if echo "$BODY" | grep -q "__INITIAL_DATA__"; then \
-        echo "✅ Material UI detected"; \
-      else \
-        echo "❌ Material UI NOT detected"; \
-        echo "$BODY" | head -c 300; \
-      fi; \
-      kill %1 2>/dev/null; true; \
-    else \
-      echo "Skipping smoke test for cross-compiled build"; \
-    fi
-
-# ── 2. Test image (alpine — has shell for CI verification) ───────────────────
+# ── 1. Test image (alpine — has shell for CI verification) ───────────────────
 FROM alpine:3.22 AS test
 
-COPY --from=builder /usr/local/bin/dufs     /usr/local/bin/dufs
-COPY --from=builder /opt/dufs/assets        /opt/dufs/assets
-COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+COPY dufs     /usr/local/bin/dufs
+COPY assets/  /opt/dufs/assets/
+
+RUN chmod +x /usr/local/bin/dufs
 
 EXPOSE 5000
 VOLUME ["/data"]
 ENTRYPOINT ["/usr/local/bin/dufs", "/data", "--assets", "/opt/dufs/assets"]
 CMD ["--allow-all", "--bind", "0.0.0.0", "--port", "5000"]
 
-# ── 3. Final image (scratch — minimal, no shell) ────────────────────────────
+# ── 2. Final image (scratch — minimal, no shell) ────────────────────────────
 FROM scratch AS final
 
-COPY --from=builder /usr/local/bin/dufs     /usr/local/bin/dufs
-COPY --from=builder /opt/dufs/assets        /opt/dufs/assets
-COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+COPY --from=certs /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+COPY dufs     /usr/local/bin/dufs
+COPY assets/  /opt/dufs/assets/
 
 EXPOSE 5000
 VOLUME ["/data"]
