@@ -207,6 +207,17 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: artifacts
+
+      - name: Debug artifacts
+        run: |
+          echo "Listing artifacts directory:"
+          ls -la artifacts/ 2>/dev/null || echo "No artifacts directory"
+          echo ""
+          echo "Looking for dufs binaries:"
+          find artifacts/ -name "dufs" -type f 2>/dev/null || echo "No dufs found"
+          echo ""
+          echo "Looking for assets:"
+          find artifacts/ -name "assets" -type d 2>/dev/null || echo "No assets found"
           pattern: "*"
 
       - name: Login to Docker Hub
