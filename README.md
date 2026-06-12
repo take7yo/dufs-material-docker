@@ -2,7 +2,7 @@
 
 > **基于 [dufs](https://github.com/sigoden/dufs) + [dufs-material-assets](https://github.com/TransparentLC/dufs-material-assets)，打包为 Docker 镜像，多架构自动构建**
 
-[![Docker Build](https://github.com/take7yo/dufs-material-docker/actions/workflows/docker-build.yml/badge.svg)](https://github.com/take7yo/dufs-material-docker/actions/workflows/docker-build.yml)
+[![Docker Build](https://github.com/take7yo/dufs-material-docker/actions/workflows/docker-build-embed.yml/badge.svg)](https://github.com/take7yo/dufs-material-docker/actions/workflows/docker-build-embed.yml)
 [![Manual Build](https://github.com/take7yo/dufs-material-docker/actions/workflows/docker-manual.yml/badge.svg)](https://github.com/take7yo/dufs-material-docker/actions/workflows/docker-manual.yml)
 [![Docker Hub](https://img.shields.io/docker/v/take7yo/dufs?label=Docker%20Hub&sort=semver)](https://hub.docker.com/r/take7yo/dufs)
 
@@ -13,15 +13,12 @@
 | 特性 | 说明 |
 |------|------|
 | **Material Design UI** | 内置 [dufs-material-assets](https://github.com/TransparentLC/dufs-material-assets)，Vue 3 + Vuetify 现代界面 |
-| **开箱即用** | 自动构建使用 `dufs-mod` 预构建二进制（UI 已嵌入），手动构建使用 stock dufs + 分离 assets |
-| **多架构支持** | 自动构建：`amd64` · `arm64` · `armv7` · `armv6` · `i386`；手动构建：`amd64` · `arm64` · `armv7` · `armv6` |
+| **源码编译** | 默认从 Rust 源码编译 dufs，透明可审计 |
+| **5 架构支持** | 所有版本均支持 `amd64` · `arm64` · `armv7` · `armv6` · `i386` |
 | **自动更新** | 每日检查上游新版本，自动构建发布 |
-| **手动构建** | 支持选择二进制来源（`sigoden/dufs` / `take7yo/dufs`），灵活指定版本 |
+| **灵活配置** | 支持自定义界面和 `config.yml` 配置 |
 | **极简镜像** | 基于 `scratch`，仅包含 dufs 二进制 + CA 证书 |
 | **双仓库推送** | Docker Hub (`take7yo/dufs`) + 阿里云 ACR (`registry.cn-hangzhou.aliyuncs.com/take7yo/dufs`) |
-
----
-
 ## 🚀 快速开始
 
 ```bash
@@ -112,7 +109,7 @@ dufs 原生支持 `DUFS_*` 前缀环境变量（[完整列表](https://github.co
 | 版本类型 | 标签格式 | 说明 | 工作流 |
 |---------|---------|------|--------|
 | **Assets 版** ⭐ | `v0.46.0` + `latest` | 默认推荐，源码编译 + assets 资源包 | [docker-build-assets.yml](.github/workflows/docker-build-assets.yml) |
-| 嵌入式 UI 版 | `v0.46.0-embed` | 预构建二进制，UI 嵌入 | [docker-build.yml](.github/workflows/docker-build.yml) |
+| 嵌入式 UI 版 | `v0.46.0-embed` | 预构建二进制，UI 嵌入 | [docker-build-embed.yml](.github/workflows/docker-build-embed.yml) |
 
 两个版本均支持 5 架构：`amd64` · `arm64` · `arm/v7` · `arm/v6` · `i386`
 
@@ -137,7 +134,7 @@ dufs 原生支持 `DUFS_*` 前缀环境变量（[完整列表](https://github.co
 |---------|------|--------|
 | `v0.46.0-fix` | 手动触发，源码编译 | [docker-manual.yml](.github/workflows/docker-manual.yml) |
 
-支持 5 架构，与 Assets 版相同的构建方式，用于紧急修复或特殊需求。
+手动构建用于紧急修复或特殊需求，支持指定源码仓库和版本，构建方式与 Assets 版相同。
 
 ---
 ## 🔧 本地构建
