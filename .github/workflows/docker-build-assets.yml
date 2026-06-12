@@ -263,7 +263,8 @@ jobs:
 
             # Assemble per-platform build context
             mkdir -p "${BUILD_DIR}/assets"
-            cp "artifacts/dufs-${TARGET}/dufs"  "${BUILD_DIR}/"
+            cp "artifacts/dufs-${TARGET}/dufs" "${BUILD_DIR}/"
+            chmod +x "${BUILD_DIR}/dufs"
             cp -r "artifacts/assets-${TARGET}/"* "${BUILD_DIR}/assets/" 2>/dev/null || true
             cp Dockerfile.assets "${BUILD_DIR}/"
 
