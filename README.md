@@ -17,7 +17,7 @@
 | **5 架构支持** | 所有版本均支持 `amd64` · `arm64` · `armv7` · `armv6` · `i386` |
 | **自动更新** | 每日检查上游新版本，自动构建发布 |
 | **灵活配置** | 支持自定义界面和 `config.yml` 配置 |
-| **极简镜像** | 基于 `scratch`，仅包含 dufs 二进制 + CA 证书 |
+| **极简镜像** | 基于 `scratch`，仅包含 dufs 二进制 + Material UI 资源（assets 版） |
 | **双仓库推送** | Docker Hub (`take7yo/dufs`) + 阿里云 ACR (`registry.cn-hangzhou.aliyuncs.com/take7yo/dufs`) |
 ## 🚀 快速开始
 
@@ -75,15 +75,15 @@ dufs 原生支持 `DUFS_*` 前缀环境变量（[完整列表](https://github.co
 ---
 
 ## 📝 config.yml 使用说明
-容器默认通过 ENTRYPOINT 硬编码了 `/data` 作为服务路径。使用 `config.yml` 时需注意：
+
+容器默认 WORKDIR 为 `/data`，dufs 启动后自动服务该目录。使用 `config.yml` 时需注意：
 
 - 默认将数据挂载到 `/data` 即可，无需额外配置
-- `config.yml` 中的 `serve.path` 会被 ENTRYPOINT 的 `/data` 参数覆盖
-- 如需使用自定义路径，覆盖 ENTRYPOINT：
+- `config.yml` 中的 `serve-path` 可覆盖默认服务路径
+- 如需完全由 config.yml 控制，可通过命令行传参覆盖 CMD 默认值：
   ```bash
-  docker run --entrypoint /usr/local/bin/dufs take7yo/dufs /custom/path --assets /opt/dufs/assets
+  docker run take7yo/dufs --config /path/to/config.yml
   ```
-- 如需完全由 config.yml 控制，覆盖 ENTRYPOINT 移除默认路径参数
 
 ---
 ## 🎨 自定义界面
@@ -176,22 +176,24 @@ cd dufs-material-docker
 docker buildx create --use
 
 # Assets 版（默认推荐，源码编译 + assets 资源包）
-docker buildx build --load -t dufs-local -f Dockerfile.assets \
-  --build-arg DUFS_VERSION=0.46.0 .
+# 需要先在构建上下文中准备好 dufs 二进制和 assets/ 目录
+# 参考 CI 工作流: 克隆 sigoden/dufs 源码，用 cross 编译，下载 assets zip
+docker buildx build --load -t dufs-local -f Dockerfile.assets .
 
 # 嵌入式 UI 版（预构建二进制，UI 嵌入）
 docker buildx build --load -t dufs-local -f Dockerfile.embed \
   --build-arg DUFS_VERSION=0.46.0 .
 
 # Fix 版（源码编译，用于紧急修复）
-docker buildx build --load -t dufs-local -f Dockerfile.fix \
-  --build-arg DUFS_VERSION=0.46.0 .
+# 同 Assets 版，需要预先准备 dufs 二进制和 assets/ 目录
+docker buildx build --load -t dufs-local -f Dockerfile.fix .
 
-# 多架构构建并推送
+# 多架构构建并推送（embed 版支持单次多架构构建）
 docker buildx build \
   --platform linux/amd64,linux/arm64,linux/arm/v7,linux/arm/v6,linux/386 \
-  -f Dockerfile.assets \
+  -f Dockerfile.embed \
   -t take7yo/dufs:latest \
+  --build-arg DUFS_VERSION=0.46.0 \
   --push .
 ```
 ## 📋 GitHub Secrets 配置

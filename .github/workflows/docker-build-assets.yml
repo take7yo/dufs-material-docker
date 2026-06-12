@@ -53,15 +53,6 @@ jobs:
             exit 0
           fi
 
-          # Push event: use hardcoded version for testing
-          if [ "${{ github.event_name }}" = "push" ]; then
-            echo "Push event: using 0.46.0 for testing"
-            echo "has_update=true" >> "$GITHUB_OUTPUT"
-            echo "version=0.46.0" >> "$GITHUB_OUTPUT"
-            echo "assets_version=0.46.0" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
           UPSTREAM_TAG=$(curl -fsSL \
             -H "Accept: application/vnd.github+json" \
             "https://api.github.com/repos/TransparentLC/dufs-material-assets/releases/latest" \
@@ -169,12 +160,12 @@ jobs:
           docker run --rm --platform "$PLAT" --entrypoint sh "$IMAGE" \
             -c "ls -lh /bin/dufs"
 
-          docker run -d --name dufs-verify --platform "$PLAT" -p 5002:5000 \
+          docker run -d --name dufs-verify --platform "$PLAT" -p 5000:5000 \
             -e DUFS_ALLOW_ALL=true "$IMAGE" \
             --assets /opt/dufs/assets
           sleep 3
 
-          BODY=$(curl -sf -A "$UA" http://localhost:5002/)
+          BODY=$(curl -sf -A "$UA" http://localhost:5000/)
           if echo "$BODY" | grep -q "__INITIAL_DATA__"; then
             echo "Material UI detected"
           else
@@ -247,6 +238,8 @@ jobs:
       # merged into a multi-arch manifest in the next step.
       - name: Build and push per-platform images
         run: |
+          VERSION="${{ needs.check.outputs.version }}"
+
           # Platform mapping: buildx-platform  →  Rust target triple
           declare -A PLATFORM_MAP=(
             ["amd64"]="x86_64-unknown-linux-musl"
@@ -273,6 +266,11 @@ jobs:
             docker buildx build \
               --platform "linux/${PLAT}" \
               --file "${BUILD_DIR}/Dockerfile.assets" \
+              --target final \
+              --label "org.opencontainers.image.title=dufs-material" \
+              --label "org.opencontainers.image.description=Dufs file server with Material Design UI (assets version)" \
+              --label "org.opencontainers.image.vendor=take7yo" \
+              --label "org.opencontainers.image.version=${VERSION}" \
               --output "type=image,name=${{ env.DOCKERHUB_REPO }},push-by-digest=true,name-canonical=true,push=true" \
               --metadata-file "/tmp/metadata-${PLAT}.json" \
               "${BUILD_DIR}"
@@ -304,6 +302,16 @@ jobs:
               --tag "${{ env.ACR_REPO }}:${TAG}" \
               ${DIGEST_REFS}
           done
+
+      - name: Update version file
+        run: |
+          ASSETS_VERSION="${{ needs.check.outputs.assets_version }}"
+          echo "${ASSETS_VERSION}" > CURRENT_VERSION_ASSETS
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add CURRENT_VERSION_ASSETS
+          git diff --cached --quiet || git commit -m "chore: bump assets version to ${ASSETS_VERSION}"
+          git push || echo "::warning::Could not push version update"
 
       - name: Summary
         run: |
