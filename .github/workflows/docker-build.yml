@@ -224,7 +224,6 @@ jobs:
             ${{ env.DOCKERHUB_REPO }}
             ${{ env.ACR_REPO }}
           tags: |
-            type=raw,value=latest
             type=raw,value=v${{ needs.check.outputs.version }}
           labels: |
             org.opencontainers.image.title=dufs-material
