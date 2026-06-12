@@ -1,4 +1,6 @@
 # docker-build-assets.yml
+# Build & Publish Docker Image — Source compilation with Material Assets UI
+# Supports 5 Linux platforms: amd64, arm64, armv7, armv6, i386
 name: Build & Publish Docker Image (Assets Version)
 on:
   schedule:
@@ -81,6 +83,8 @@ jobs:
             tag: armv7
           - platform: linux/arm/v6
             tag: armv6
+          - platform: linux/386
+            tag: i386
     steps:
       - uses: actions/checkout@v4
       - name: Save version
@@ -102,17 +106,16 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: Dockerfile.stock
+          file: Dockerfile.src
           target: test
           load: true
           tags: dufs-assets-test:${{ matrix.tag }}
           platforms: ${{ matrix.platform }}
           build-args: |
             DUFS_VERSION=${{ needs.check.outputs.version }}
-            DUFS_REPO=sigoden/dufs
             DUFS_ASSETS_VERSION=${{ needs.check.outputs.assets_version }}
-          cache-from: type=gha,scope=assets-${{ matrix.platform }}
-          cache-to: type=gha,scope=assets-${{ matrix.platform }},mode=max
+          cache-from: type=gha,scope=src-${{ matrix.platform }}
+          cache-to: type=gha,scope=src-${{ matrix.platform }},mode=max
       - name: Verify
         run: |
           IMAGE="dufs-assets-test:${{ matrix.tag }}"
@@ -169,24 +172,25 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: Dockerfile.stock
-          platforms: linux/amd64,linux/arm64,linux/arm/v7,linux/arm/v6
+          file: Dockerfile.src
+          platforms: linux/amd64,linux/arm64,linux/arm/v7,linux/arm/v6,linux/386
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             DUFS_VERSION=${{ needs.check.outputs.version }}
-            DUFS_REPO=sigoden/dufs
             DUFS_ASSETS_VERSION=${{ needs.check.outputs.assets_version }}
           cache-from: |
-            type=gha,scope=assets-linux/amd64
-            type=gha,scope=assets-linux/arm64
-            type=gha,scope=assets-linux/arm/v7
-            type=gha,scope=assets-linux/arm/v6
+            type=gha,scope=src-linux/amd64
+            type=gha,scope=src-linux/arm64
+            type=gha,scope=src-linux/arm/v7
+            type=gha,scope=src-linux/arm/v6
+            type=gha,scope=src-linux/386
           cache-to: type=gha,mode=max
       - name: Summary
         run: |
           echo "## Docker Image Published (Assets Version)" >> "$GITHUB_STEP_SUMMARY"
           echo "Version: ${{ needs.check.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"
           echo "Tag: av${{ needs.check.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "Platforms: linux/amd64, linux/arm64, linux/arm/v7, linux/arm/v6" >> "$GITHUB_STEP_SUMMARY"
+          echo "Platforms: linux/amd64, linux/arm64, linux/arm/v7, linux/arm/v6, linux/386" >> "$GITHUB_STEP_SUMMARY"
+          echo "Build method: Source compilation (Rust + cross)" >> "$GITHUB_STEP_SUMMARY"
