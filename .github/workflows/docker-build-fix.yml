@@ -10,6 +10,14 @@ name: Build (Fix)
 on:
   workflow_dispatch:
     inputs:
+      binary_source:
+        description: "Source repository"
+        required: true
+        type: choice
+        options:
+          - sigoden/dufs
+          - take7yo/dufs
+        default: sigoden/dufs
       version:
         description: "dufs version (e.g. 0.46.0)"
         required: true
@@ -18,7 +26,6 @@ on:
         description: "Assets version (leave empty to use dufs version)"
         required: false
         type: string
-
 permissions:
   contents: write
 
@@ -35,6 +42,7 @@ jobs:
       has_update: ${{ steps.check.outputs.has_update }}
       version: ${{ steps.check.outputs.version }}
       assets_version: ${{ steps.check.outputs.assets_version }}
+      binary_source: ${{ steps.check.outputs.binary_source }}
     steps:
       - name: Validate inputs
         id: check
@@ -52,6 +60,7 @@ jobs:
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "assets_version=${ASSETS_VERSION}" >> "$GITHUB_OUTPUT"
 
+          echo "binary_source=${{ github.event.inputs.binary_source }}" >> "$GITHUB_OUTPUT"
       - name: Verify assets release exists
         run: |
           ASSETS_VERSION="${{ steps.check.outputs.assets_version }}"
@@ -97,7 +106,7 @@ jobs:
       - name: Clone dufs source
         run: |
           git clone --depth 1 --branch "v${{ needs.check.outputs.version }}" \
-            https://github.com/sigoden/dufs.git dufs-src
+            https://github.com/${{ github.event.inputs.binary_source }}.git dufs-src
 
       - name: Download assets
         run: |
