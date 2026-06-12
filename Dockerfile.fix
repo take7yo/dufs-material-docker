@@ -18,6 +18,7 @@ EXPOSE 5000
 VOLUME ["/data"]
 WORKDIR /data
 ENTRYPOINT ["/bin/dufs"]
+CMD ["--assets", "/opt/dufs/assets"]
 
 # ── 2. Final image (scratch — minimal, no shell) ────────────────────────────
 FROM scratch AS final
@@ -29,3 +30,4 @@ EXPOSE 5000
 VOLUME ["/data"]
 WORKDIR /data
 ENTRYPOINT ["/bin/dufs"]
+CMD ["--assets", "/opt/dufs/assets"]
