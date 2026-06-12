@@ -1,5 +1,6 @@
 # docker-build-assets.yml
-# Build & Publish Docker Image — Source compilation with Material Assets UI
+# Build # Build & Publish Docker Image — Source compilation with Material Assets UI Publish Docker Image — Source compilation with Material Assets UI
+# Checks TransparentLC/dufs-material-assets for new releases
 # Supports 5 Linux platforms: amd64, arm64, armv7, armv6, i386
 name: Build & Publish Docker Image (Assets Version)
 on:
@@ -53,7 +54,7 @@ jobs:
             echo "assets_version=$VERSION" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          UPSTREAM_TAG=$(curl -fsSL -H "Accept: application/vnd.github+json" "https://api.github.com/repos/sigoden/dufs/releases/latest" | jq -r ".tag_name // empty")
+          UPSTREAM_TAG=$(curl -fsSL -H "Accept: application/vnd.github+json" "https://api.github.com/repos/TransparentLC/dufs-material-assets/releases/latest" | jq -r ".tag_name // empty")
           if [ -z "${UPSTREAM_TAG}" ]; then
             echo "has_update=false" >> "$GITHUB_OUTPUT"
             exit 0
