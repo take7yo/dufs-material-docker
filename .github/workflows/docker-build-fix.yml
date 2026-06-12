@@ -165,7 +165,9 @@ jobs:
           PLAT="${{ matrix.platform }}"
           UA="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120.0.0.0"
           docker run --rm --platform "$PLAT" --entrypoint sh "$IMAGE" -c "ls -lh /bin/dufs"
-          docker run -d --name dufs-verify --platform "$PLAT" -p 5000:5000 -e DUFS_ALLOW_ALL=true "$IMAGE"
+          docker run -d --name dufs-verify --platform "$PLAT" -p 5000:5000 \
+            -e DUFS_ALLOW_ALL=true "$IMAGE" \
+            --assets /opt/dufs/assets
           sleep 3
           BODY=$(curl -sf -A "$UA" http://localhost:5000/)
           if echo "$BODY" | grep -q "__INITIAL_DATA__"; then
