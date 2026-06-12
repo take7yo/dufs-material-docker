@@ -178,12 +178,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download all platform artifacts
+      - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts
           pattern: "*"
-            merge-multiple: true
 
       - name: Login to Docker Hub
         uses: docker/login-action@v3
@@ -204,51 +203,74 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      # Build and push each platform as a separate image by digest.
+      # We must build per-platform because each architecture needs a
+      # different pre-compiled binary. The digests are collected and
+      # merged into a multi-arch manifest in the next step.
       - name: Build and push per-platform images
         run: |
           VERSION="${{ needs.check.outputs.version }}"
-          PLATFORMS="linux/amd64:x86_64-unknown-linux-musl:amd64 linux/arm64:aarch64-unknown-linux-musl:arm64 linux/arm/v7:armv7-unknown-linux-musleabihf:armv7 linux/arm/v6:arm-unknown-linux-musleabihf:armv6 linux/386:i686-unknown-linux-musl:i386"
-          for ENTRY in $PLATFORMS; do
-            PLAT=$(echo "$ENTRY" | cut -d: -f1)
-            TARGET=$(echo "$ENTRY" | cut -d: -f2)
-            TAG=$(echo "$ENTRY" | cut -d: -f3)
-            echo "=== Building and pushing $PLAT ==="
-            cp "artifacts/dufs-$TARGET/dufs" ./dufs
-            TAG_ARGS=""
-            TAG_ARGS="$TAG_ARGS --tag ${{ env.DOCKERHUB_REPO }}:v${VERSION}-fix-${TAG}"
-            TAG_ARGS="$TAG_ARGS --tag ${{ env.ACR_REPO }}:v${VERSION}-fix-${TAG}"
-            docker buildx build \
-              --platform "$PLAT" \
-              --file Dockerfile.fix \
-              --target final \
-              --provenance=false \
-              --push \
-              --label "org.opencontainers.image.title=dufs-material" \
-              --label "org.opencontainers.image.description=Dufs file server with Material Design UI (fix version)" \
-              --label "org.opencontainers.image.vendor=take7yo" \
-              --label "org.opencontainers.image.version=${VERSION}-fix" \
-              $TAG_ARGS \
-              .
-            echo "Pushed: $PLAT"
-            rm -f ./dufs
+
+          # Platform mapping: buildx-platform  →  Rust target triple
+          declare -A PLATFORM_MAP=(
+            ["amd64"]="x86_64-unknown-linux-musl"
+            ["arm64"]="aarch64-unknown-linux-musl"
+            ["armv7"]="armv7-unknown-linux-musleabihf"
+            ["armv6"]="arm-unknown-linux-musleabihf"
+            ["i386"]="i686-unknown-linux-musl"
+          )
+
+          mkdir -p /tmp/digests
+
+          for PLAT in amd64 arm64 armv7 armv6 i386; do
+            TARGET="${PLATFORM_MAP[$PLAT]}"
+            BUILD_DIR="/tmp/build-${PLAT}"
+
+            # Assemble per-platform build context
+            mkdir -p "${BUILD_DIR}/assets"
+            cp "artifacts/dufs-${TARGET}/dufs"  "${BUILD_DIR}/"
+            cp -r "artifacts/assets-${TARGET}/"* "${BUILD_DIR}/assets/" 2>/dev/null || true
+            cp Dockerfile.fix "${BUILD_DIR}/"
+
+            # Build and push by digest (no tags — we create manifests later)
+            DIGEST=$(
+              docker buildx build \
+                --platform "linux/${PLAT}" \
+                --file "${BUILD_DIR}/Dockerfile.fix" \
+                --target final \
+                --label "org.opencontainers.image.title=dufs-material" \
+                --label "org.opencontainers.image.description=Dufs file server with Material Design UI (fix version)" \
+                --label "org.opencontainers.image.vendor=take7yo" \
+                --label "org.opencontainers.image.version=${VERSION}-fix" \
+                --output "type=image,name=${{ env.DOCKERHUB_REPO }},push-by-digest=true,name-canonical=true,push=true" \
+                "${BUILD_DIR}" 2>&1 \
+              | grep -oP 'sha256:[a-f0-9]+' | head -1
+            )
+
+            echo "${DIGEST}" > "/tmp/digests/${PLAT}"
+            echo "Pushed linux/${PLAT}: ${DIGEST}"
           done
 
-      - name: Create multi-platform manifest
+      # Assemble per-platform digests into multi-arch manifests
+      - name: Create and push multi-arch manifests
         run: |
           VERSION="${{ needs.check.outputs.version }}"
-          TAG_NAMES="v${VERSION}-fix latest"
-          for REGISTRY in "${{ env.DOCKERHUB_REPO }}" "${{ env.ACR_REPO }}"; do
-            for TAG_NAME in $TAG_NAMES; do
-              FULL_TAG="${REGISTRY}:${TAG_NAME}"
-              PLATFORM_IMAGES=""
-              for PLAT_TAG in amd64 arm64 armv7 armv6 i386; do
-                PLATFORM_IMAGES="$PLATFORM_IMAGES ${REGISTRY}:v${VERSION}-fix-${PLAT_TAG}"
-              done
-              echo "Creating manifest: $FULL_TAG"
-              docker buildx imagetools create \
-                --tag "$FULL_TAG" \
-                $PLATFORM_IMAGES || echo "::warning::Could not create manifest for $FULL_TAG"
-            done
+          TAGS=("v${VERSION}-fix" "latest")
+
+          # Collect digest references
+          DIGEST_REFS=""
+          for PLAT in amd64 arm64 armv7 armv6 i386; do
+            DIGEST=$(cat "/tmp/digests/${PLAT}")
+            DIGEST_REFS="${DIGEST_REFS} ${{ env.DOCKERHUB_REPO }}@${DIGEST}"
+          done
+
+          # Push manifest to each registry
+          for TAG in "${TAGS[@]}"; do
+            echo "Creating manifest: ${TAG}"
+            docker buildx imagetools create \
+              --tag "${{ env.DOCKERHUB_REPO }}:${TAG}" \
+              --tag "${{ env.ACR_REPO }}:${TAG}" \
+              ${DIGEST_REFS}
           done
 
       - name: Summary
