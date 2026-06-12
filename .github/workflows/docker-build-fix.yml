@@ -232,21 +232,21 @@ jobs:
             cp -r "artifacts/assets-${TARGET}/"* "${BUILD_DIR}/assets/" 2>/dev/null || true
             cp Dockerfile.fix "${BUILD_DIR}/"
 
-            # Build and push by digest (no tags — we create manifests later)
-            DIGEST=$(
-              docker buildx build \
-                --platform "linux/${PLAT}" \
-                --file "${BUILD_DIR}/Dockerfile.fix" \
-                --target final \
-                --label "org.opencontainers.image.title=dufs-material" \
-                --label "org.opencontainers.image.description=Dufs file server with Material Design UI (fix version)" \
-                --label "org.opencontainers.image.vendor=take7yo" \
-                --label "org.opencontainers.image.version=${VERSION}-fix" \
-                --output "type=image,name=${{ env.DOCKERHUB_REPO }},push-by-digest=true,name-canonical=true,push=true" \
-                "${BUILD_DIR}" 2>&1 \
-              | grep -oP 'sha256:[a-f0-9]+' | head -1
-            )
+            # Build and push by digest using metadata file
+            docker buildx build \
+              --platform "linux/${PLAT}" \
+              --file "${BUILD_DIR}/Dockerfile.fix" \
+              --target final \
+              --label "org.opencontainers.image.title=dufs-material" \
+              --label "org.opencontainers.image.description=Dufs file server with Material Design UI (fix version)" \
+              --label "org.opencontainers.image.vendor=take7yo" \
+              --label "org.opencontainers.image.version=${VERSION}-fix" \
+              --output "type=image,name=${{ env.DOCKERHUB_REPO }},push-by-digest=true,name-canonical=true,push=true" \
+              --metadata-file "/tmp/metadata-${PLAT}.json" \
+              "${BUILD_DIR}"
 
+            # Extract digest from metadata
+            DIGEST=$(jq -r '."containerimage.digest"' "/tmp/metadata-${PLAT}.json")
             echo "${DIGEST}" > "/tmp/digests/${PLAT}"
             echo "Pushed linux/${PLAT}: ${DIGEST}"
           done
