@@ -1,4 +1,4 @@
-FROM alpine:3.22 AS test
+FROM alpine:3.20 AS test
 COPY dufs /usr/local/bin/dufs
 COPY assets /opt/dufs/assets
 RUN chmod +x /usr/local/bin/dufs

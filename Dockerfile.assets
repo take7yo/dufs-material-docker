@@ -10,10 +10,10 @@
 ###############################################################################
 
 # ── 0. Certs stage (provides CA certificates for scratch image) ─────────────
-FROM alpine:3.22 AS certs
+FROM --platform=$BUILDPLATFORM alpine:3.20 AS certs
 
 # ── 1. Test image (alpine — has shell for CI verification) ───────────────────
-FROM alpine:3.22 AS test
+FROM alpine:3.20 AS test
 
 COPY dufs     /usr/local/bin/dufs
 COPY assets/  /opt/dufs/assets/
