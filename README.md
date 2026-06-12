@@ -92,13 +92,13 @@ dufs 原生支持 `DUFS_*` 前缀环境变量（[完整列表](https://github.co
 
 ## 🏗️ 支持架构
 
-| Docker 平台 | Rust Target | 自动构建 | 手动构建 |
-|---|---|:---:|:---:|
-| `linux/amd64` | `x86_64-unknown-linux-musl` | ✅ | ✅ |
-| `linux/arm64` | `aarch64-unknown-linux-musl` | ✅ | ✅ |
-| `linux/arm/v7` | `armv7-unknown-linux-musleabihf` | ✅ | ✅ |
-| `linux/arm/v6` | `arm-unknown-linux-musleabihf` | ✅ | ✅ |
-| `linux/386` | `i686-unknown-linux-musl` | ✅ | ❌ |
+| Docker 平台 | Rust Target | 嵌入式 UI | Assets 版本 | 手动构建 |
+|---|---|:---:|:---:|:---:|
+| `linux/amd64` | `x86_64-unknown-linux-musl` | ✅ | ✅ | ✅ |
+| `linux/arm64` | `aarch64-unknown-linux-musl` | ✅ | ✅ | ✅ |
+| `linux/arm/v7` | `armv7-unknown-linux-musleabihf` | ✅ | ✅ | ✅ |
+| `linux/arm/v6` | `arm-unknown-linux-musleabihf` | ✅ | ✅ | ✅ |
+| `linux/386` | `i686-unknown-linux-musl` | ✅ | ✅ | ✅ |
 
 > 所有版本均支持 5 架构，通过源码编译实现跨平台支持。
 
