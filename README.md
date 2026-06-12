@@ -77,6 +77,19 @@ dufs 原生支持 `DUFS_*` 前缀环境变量（[完整列表](https://github.co
 
 ---
 
+## 📝 config.yml 使用说明
+容器默认通过 ENTRYPOINT 硬编码了 `/data` 作为服务路径。使用 `config.yml` 时需注意：
+
+- 默认将数据挂载到 `/data` 即可，无需额外配置
+- `config.yml` 中的 `serve.path` 会被 ENTRYPOINT 的 `/data` 参数覆盖
+- 如需使用自定义路径，覆盖 ENTRYPOINT：
+  ```bash
+  docker run --entrypoint /usr/local/bin/dufs take7yo/dufs /custom/path --assets /opt/dufs/assets
+  ```
+- 如需完全由 config.yml 控制，覆盖 ENTRYPOINT 移除默认路径参数
+
+---
+
 ## 🏗️ 支持架构
 
 | Docker 平台 | Rust Target | 自动构建 | 手动构建 |
