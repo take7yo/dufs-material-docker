@@ -72,35 +72,24 @@ jobs:
       matrix:
         include:
           - platform: linux/amd64
-            tag: amd64
-            rust_target: x86_64-unknown-linux-musl
-            use_cross: false
+            target: x86_64-unknown-linux-musl
           - platform: linux/arm64
-            tag: arm64
-            rust_target: aarch64-unknown-linux-musl
-            use_cross: true
+            target: aarch64-unknown-linux-musl
           - platform: linux/arm/v7
-            tag: armv7
-            rust_target: armv7-unknown-linux-musleabihf
-            use_cross: true
+            target: armv7-unknown-linux-musleabihf
           - platform: linux/arm/v6
-            tag: armv6
-            rust_target: arm-unknown-linux-musleabihf
-            use_cross: true
+            target: arm-unknown-linux-musleabihf
           - platform: linux/386
-            tag: i386
-            rust_target: i686-unknown-linux-musl
-            use_cross: true
+            target: i686-unknown-linux-musl
     steps:
       - uses: actions/checkout@v4
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.rust_target }}
+          targets: ${{ matrix.target }}
 
       - name: Install cross
-        if: matrix.use_cross
         uses: taiki-e/install-action@v2
         with:
           tool: cross
@@ -125,14 +114,14 @@ jobs:
 
       - name: Build dufs binary
         working-directory: dufs-src
+        run: cross build --locked --release --target=${{ matrix.target }}
+        env:
+          RUST_BACKTRACE: 1
+
+      - name: Copy binary
         run: |
-          if [ "${{ matrix.use_cross }}" = "true" ]; then
-            cross build --locked --release --target=${{ matrix.rust_target }}
-          else
-            cargo build --locked --release --target=${{ matrix.rust_target }}
-          fi
-          cp target/${{ matrix.rust_target }}/release/dufs ../dufs
-          chmod +x ../dufs
+          cp dufs-src/target/${{ matrix.target }}/release/dufs ./dufs
+          chmod +x ./dufs
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -140,19 +129,19 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: "[${{ matrix.tag }}] Build test image"
+      - name: Build test image
         uses: docker/build-push-action@v6
         with:
           context: .
           file: Dockerfile.fix
           target: test
           load: true
-          tags: dufs-fix-test:${{ matrix.tag }}
+          tags: dufs-fix-test:${{ matrix.target }}
           platforms: ${{ matrix.platform }}
 
-      - name: "[${{ matrix.tag }}] Verify image"
+      - name: Verify image
         run: |
-          IMAGE="dufs-fix-test:${{ matrix.tag }}"
+          IMAGE="dufs-fix-test:${{ matrix.target }}"
           PLAT="${{ matrix.platform }}"
           UA="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120.0.0.0"
           docker run --rm --platform "$PLAT" --entrypoint sh "$IMAGE" -c "ls -lh /usr/local/bin/dufs"
@@ -172,7 +161,7 @@ jobs:
       - name: Save binary as artifact
         uses: actions/upload-artifact@v4
         with:
-          name: dufs-${{ matrix.tag }}
+          name: dufs-${{ matrix.target }}
           path: dufs
           retention-days: 1
 
@@ -210,12 +199,13 @@ jobs:
       - name: Build and push per-platform images
         run: |
           VERSION="${{ needs.check.outputs.version }}"
-          PLATFORMS="linux/amd64:amd64 linux/arm64:arm64 linux/arm/v7:armv7 linux/arm/v6:armv6 linux/386:i386"
+          PLATFORMS="linux/amd64:x86_64-unknown-linux-musl:amd64 linux/arm64:aarch64-unknown-linux-musl:arm64 linux/arm/v7:armv7-unknown-linux-musleabihf:armv7 linux/arm/v6:arm-unknown-linux-musleabihf:armv6 linux/386:i686-unknown-linux-musl:i386"
           for ENTRY in $PLATFORMS; do
             PLAT=$(echo "$ENTRY" | cut -d: -f1)
-            TAG=$(echo "$ENTRY" | cut -d: -f2)
+            TARGET=$(echo "$ENTRY" | cut -d: -f2)
+            TAG=$(echo "$ENTRY" | cut -d: -f3)
             echo "=== Building and pushing $PLAT ==="
-            cp "artifacts/dufs-$TAG/dufs" ./dufs
+            cp "artifacts/dufs-$TARGET/dufs" ./dufs
             TAG_ARGS=""
             TAG_ARGS="$TAG_ARGS --tag ${{ env.DOCKERHUB_REPO }}:v${VERSION}-fix-${TAG}"
             TAG_ARGS="$TAG_ARGS --tag ${{ env.ACR_REPO }}:v${VERSION}-fix-${TAG}"
