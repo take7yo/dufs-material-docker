@@ -1,24 +1,17 @@
 # ──────────────────────────────────────────────────────────────────────────────
-#  docker-build-embed.yml – Build & publish take7yo/dufs Docker image (embed version)
+#  docker-build-embed.yml – Build & publish Docker image (embed version)
 #
-#  Registries:
-#    • Docker Hub   – docker.io/take7yo/dufs
-#    • 阿里云 ACR    – registry.cn-hangzhou.aliyuncs.com/take7yo/dufs
-#
-#  Triggers:
-#    • schedule  – daily at 03:17 UTC, auto-builds when upstream has a new tag
-#    • release   – when THIS repo cuts a GitHub Release
-#    • workflow_dispatch – manual trigger with optional version override
+#  Trigger: schedule (daily 03:17 UTC), release, workflow_dispatch
+#  Platforms: amd64, arm64, armv7, armv6, i386
+#  Tags: v{version}-embed
 # ──────────────────────────────────────────────────────────────────────────────
-name: Build & Publish Docker Image
+name: Build (Embed)
 
 on:
   schedule:
     - cron: "17 3 * * *"
-
   release:
     types: [published]
-
   workflow_dispatch:
     inputs:
       version:
@@ -35,68 +28,54 @@ env:
 
 # ──────────────────────────────────────────────────────────────────────────────
 jobs:
-  # ════════════════════════════════════════════════════════════════════════════
-  #  Job 1: Check if upstream has a new release
-  # ════════════════════════════════════════════════════════════════════════════
   check:
     runs-on: ubuntu-latest
     outputs:
       has_update: ${{ steps.check.outputs.has_update }}
-      version:    ${{ steps.check.outputs.version }}
+      version: ${{ steps.check.outputs.version }}
+      assets_version: ${{ steps.check.outputs.assets_version }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Check upstream for new release
+      - name: Check upstream
         id: check
         run: |
           if [ -n "${{ github.event.inputs.version }}" ]; then
             VERSION="${{ github.event.inputs.version }}"
-            echo "Manual dispatch: version=${VERSION}"
+            VERSION="${VERSION#v}"
             echo "has_update=true" >> "$GITHUB_OUTPUT"
-            echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+            echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+            echo "assets_version=$VERSION" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-
           if [ "${{ github.event_name }}" = "release" ]; then
             VERSION="${GITHUB_REF_NAME#v}"
-            echo "Release event: version=${VERSION}"
             echo "has_update=true" >> "$GITHUB_OUTPUT"
-            echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+            echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+            echo "assets_version=$VERSION" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-
-          echo "Scheduled run: checking upstream TransparentLC/dufs-material-assets"
           UPSTREAM_TAG=$(curl -fsSL \
             -H "Accept: application/vnd.github+json" \
             "https://api.github.com/repos/TransparentLC/dufs-material-assets/releases/latest" \
             | jq -r '.tag_name // empty')
-
           if [ -z "${UPSTREAM_TAG}" ]; then
             echo "::warning::Could not fetch upstream release tag"
             echo "has_update=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-
           UPSTREAM_VERSION="${UPSTREAM_TAG#v}"
-          echo "Upstream latest: ${UPSTREAM_VERSION}"
-
           CURRENT_VERSION=$(cat CURRENT_VERSION 2>/dev/null || echo "0.0.0")
-          echo "Current built version: ${CURRENT_VERSION}"
-
           if [ "${UPSTREAM_VERSION}" = "${CURRENT_VERSION}" ]; then
-            echo "Already up to date (${CURRENT_VERSION})"
             echo "has_update=false" >> "$GITHUB_OUTPUT"
           else
-            echo "New version available: ${CURRENT_VERSION} → ${UPSTREAM_VERSION}"
             echo "has_update=true" >> "$GITHUB_OUTPUT"
-            echo "version=${UPSTREAM_VERSION}" >> "$GITHUB_OUTPUT"
+            echo "version=$UPSTREAM_VERSION" >> "$GITHUB_OUTPUT"
+            echo "assets_version=$UPSTREAM_VERSION" >> "$GITHUB_OUTPUT"
           fi
 
-  # ════════════════════════════════════════════════════════════════════════════
-  #  Job 2: Verify each platform, then push
-  # ════════════════════════════════════════════════════════════════════════════
   build:
     runs-on: ubuntu-latest
     needs: check
@@ -118,80 +97,56 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # ── Save version for next scheduled run ────────────────────────────────
-      - name: Save current version
+      - name: "[amd64] Save version"
         if: matrix.platform == 'linux/amd64'
         run: echo "${{ needs.check.outputs.version }}" > CURRENT_VERSION
 
-      - name: Commit version file
+      - name: "[amd64] Commit version"
         if: matrix.platform == 'linux/amd64'
         run: |
-          git config user.name  "github-actions[bot]"
+          git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add CURRENT_VERSION
           git diff --cached --quiet || git commit -m "chore: bump version to ${{ needs.check.outputs.version }}"
-          git push || echo "::warning::Could not push version file"
+          git push || echo "::warning::Could not push"
 
-      # ── QEMU (needed for non-native platforms) ─────────────────────────────
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # ── Build test image for this platform ─────────────────────────────────
-      - name: "[${{ matrix.platform }}] Build test image"
+      - name: "[${{ matrix.tag }}] Build test image"
         uses: docker/build-push-action@v6
         with:
           context: .
           file: Dockerfile.embed
           target: test
           load: true
-          tags: dufs-test:${{ matrix.tag }}
+          tags: dufs-embed-test:${{ matrix.tag }}
           platforms: ${{ matrix.platform }}
           build-args: |
             DUFS_VERSION=${{ needs.check.outputs.version }}
-          cache-from: type=gha,scope=${{ matrix.platform }}
-          cache-to: type=gha,scope=${{ matrix.platform }},mode=max
 
-      # ── Verify ─────────────────────────────────────────────────────────────
-      - name: "[${{ matrix.platform }}] Verify image"
+      - name: "[${{ matrix.tag }}] Verify image"
         run: |
-          IMAGE="dufs-test:${{ matrix.tag }}"
+          IMAGE="dufs-embed-test:${{ matrix.tag }}"
           PLAT="${{ matrix.platform }}"
           UA="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120.0.0.0"
-
-          echo "── 1. Binary info ──"
-          docker run --rm --platform "$PLAT" --entrypoint sh "$IMAGE" \
-            -c "ls -lh /usr/local/bin/dufs"
-
-          echo "── 2. Start dufs ──"
-          docker run -d --name dufs-verify --platform "$PLAT" -p 5000:5000 \
-            -e DUFS_ALLOW_ALL=true "$IMAGE"
+          docker run --rm --platform "$PLAT" --entrypoint sh "$IMAGE" -c "ls -lh /usr/local/bin/dufs"
+          docker run -d --name dufs-verify --platform "$PLAT" -p 5000:5000 -e DUFS_ALLOW_ALL=true "$IMAGE"
           sleep 3
-
-          echo "── 3. HTTP response (as browser) ──"
           BODY=$(curl -sf -A "$UA" http://localhost:5000/)
-          echo "Response length: $(echo "$BODY" | wc -c) bytes"
-          echo "── First 300 chars ──"
-          echo "$BODY" | head -c 300
-          echo ""
-
-          echo "── 4. Check Material UI ──"
           if echo "$BODY" | grep -q "__INITIAL_DATA__"; then
-            echo "✅ Material UI SPA detected (__INITIAL_DATA__)"
+            echo "Material UI detected"
           else
-            echo "❌ Material UI NOT detected"
+            echo "Material UI NOT detected"
             docker stop dufs-verify
             exit 1
           fi
-
           docker stop dufs-verify
-          echo "✅ [${{ matrix.platform }}] All checks passed"
+          echo "All checks passed"
 
-  # ════════════════════════════════════════════════════════════════════════════
-  #  Job 3: Push multi-platform image (all platforms verified above)
-  # ════════════════════════════════════════════════════════════════════════════
   push:
     runs-on: ubuntu-latest
     needs: [check, build]
@@ -204,7 +159,7 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Login to Alibaba Cloud ACR
+      - name: Login to ACR
         uses: docker/login-action@v3
         with:
           registry: ${{ env.ACR_REGISTRY }}
@@ -228,11 +183,10 @@ jobs:
             type=raw,value=v${{ needs.check.outputs.version }}-embed
           labels: |
             org.opencontainers.image.title=dufs-material
-            org.opencontainers.image.description=Dufs file server with Material Design UI
+            org.opencontainers.image.description=Dufs file server with Material Design UI (embed version)
             org.opencontainers.image.vendor=take7yo
             org.opencontainers.image.version=${{ needs.check.outputs.version }}
 
-      # ── Build & push multi-platform (reuses per-platform GHA cache) ────────
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
@@ -244,23 +198,14 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             DUFS_VERSION=${{ needs.check.outputs.version }}
-          cache-from: |
-            type=gha,scope=linux/amd64
-            type=gha,scope=linux/arm64
-            type=gha,scope=linux/arm/v7
-            type=gha,scope=linux/arm/v6
-            type=gha,scope=linux/386
-          cache-to: type=gha,mode=max
 
       - name: Summary
         run: |
-          echo "## 🐳 Docker Image Published" >> "$GITHUB_STEP_SUMMARY"
+          echo "## Docker Image Published (Embed Version)" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Registry | Image |" >> "$GITHUB_STEP_SUMMARY"
-          echo "|----------|-------|" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Docker Hub | \`${{ env.DOCKERHUB_REPO }}:v${{ needs.check.outputs.version }}-embed\` |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| 阿里云 ACR | \`${{ env.ACR_REPO }}:v${{ needs.check.outputs.version }}-embed\` |" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "**Platforms:** linux/amd64, linux/arm64, linux/arm/v7, linux/arm/v6, linux/386" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "✅ All 5 platforms verified before push" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Item | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|------|-------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Version | \`${{ needs.check.outputs.version }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Tag | \`v${{ needs.check.outputs.version }}-embed\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Platforms | linux/amd64, linux/arm64, linux/arm/v7, linux/arm/v6, linux/386 |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Build method | Pre-built binary (Dockerfile.embed) |" >> "$GITHUB_STEP_SUMMARY"
