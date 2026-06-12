@@ -228,12 +228,14 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # Build and push per-platform images
+      # Build and push per-platform images by digest
       - name: Build and push per-platform
         run: |
           VERSION="${{ needs.check.outputs.version }}"
           PLATFORMS=("amd64" "arm64" "armv7" "armv6" "i386")
           TARGETS=("x86_64-unknown-linux-musl" "aarch64-unknown-linux-musl" "armv7-unknown-linux-musleabihf" "arm-unknown-linux-musleabihf" "i686-unknown-linux-musl")
+
+          mkdir -p /tmp/digests
 
           for i in "${!PLATFORMS[@]}"; do
             PLAT="${PLATFORMS[$i]}"
@@ -245,14 +247,15 @@ jobs:
             cp -r artifacts/assets-${TARGET}/* /tmp/build-${PLAT}/assets/ 2>/dev/null || mkdir -p /tmp/build-${PLAT}/assets
             cp Dockerfile.assets /tmp/build-${PLAT}/
 
-            # Build and push
-            docker buildx build \
+            # Build and push by digest
+            DIGEST=$(docker buildx build \
               --platform linux/${PLAT} \
               --file /tmp/build-${PLAT}/Dockerfile.assets \
-              --tag ${{ env.DOCKERHUB_REPO }}:${VERSION}-${PLAT} \
-              --tag ${{ env.ACR_REPO }}:${VERSION}-${PLAT} \
-              --push \
-              /tmp/build-${PLAT}
+              --output type=image,name=${{ env.DOCKERHUB_REPO }},push-by-digest=true,name-canonical=true,push=true \
+              /tmp/build-${PLAT} 2>&1 | grep -oP 'sha256:[a-f0-9]+' | head -1)
+
+            echo "${DIGEST}" > /tmp/digests/${PLAT}
+            echo "Pushed ${PLAT}: ${DIGEST}"
           done
 
       # Create multi-platform manifest
@@ -260,25 +263,24 @@ jobs:
         run: |
           VERSION="${{ needs.check.outputs.version }}"
 
-          # Docker Hub manifest
+          # Build manifest from digests
+          DIGESTS=""
+          for PLAT in amd64 arm64 armv7 armv6 i386; do
+            DIGEST=$(cat /tmp/digests/${PLAT})
+            DIGESTS="${DIGESTS} ${{ env.DOCKERHUB_REPO }}@${DIGEST}"
+          done
+
+          # Create and push Docker Hub manifest
           docker buildx imagetools create \
             --tag ${{ env.DOCKERHUB_REPO }}:${VERSION} \
             --tag ${{ env.DOCKERHUB_REPO }}:latest \
-            ${{ env.DOCKERHUB_REPO }}:${VERSION}-amd64 \
-            ${{ env.DOCKERHUB_REPO }}:${VERSION}-arm64 \
-            ${{ env.DOCKERHUB_REPO }}:${VERSION}-armv7 \
-            ${{ env.DOCKERHUB_REPO }}:${VERSION}-armv6 \
-            ${{ env.DOCKERHUB_REPO }}:${VERSION}-i386
+            ${DIGESTS}
 
-          # ACR manifest
+          # Create and push ACR manifest
           docker buildx imagetools create \
             --tag ${{ env.ACR_REPO }}:${VERSION} \
             --tag ${{ env.ACR_REPO }}:latest \
-            ${{ env.ACR_REPO }}:${VERSION}-amd64 \
-            ${{ env.ACR_REPO }}:${VERSION}-arm64 \
-            ${{ env.ACR_REPO }}:${VERSION}-armv7 \
-            ${{ env.ACR_REPO }}:${VERSION}-armv6 \
-            ${{ env.ACR_REPO }}:${VERSION}-i386
+            ${DIGESTS}
 
       - name: Summary
         run: |
