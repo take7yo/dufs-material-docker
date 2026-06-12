@@ -5,15 +5,15 @@
 #  Binary is compiled in the CI workflow using cross (Rust cross-compilation).
 #
 #  Targets:
-#    test   – alpine-based image with shell (for CI verification)
+#    test   – debian-based image with shell (for CI verification)
 #    final  – scratch-based minimal image (default, for publishing)
 ###############################################################################
 
 # ── 0. Certs stage (provides CA certificates for scratch image) ─────────────
-FROM --platform=$BUILDPLATFORM alpine:3.20 AS certs
+FROM --platform=$BUILDPLATFORM debian:bookworm-slim AS certs
 
-# ── 1. Test image (alpine — has shell for CI verification) ───────────────────
-FROM alpine:3.20 AS test
+# ── 1. Test image (debian — has shell for CI verification) ───────────────────
+FROM debian:bookworm-slim AS test
 
 COPY dufs     /usr/local/bin/dufs
 COPY assets/  /opt/dufs/assets/

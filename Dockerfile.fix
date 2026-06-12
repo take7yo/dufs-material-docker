@@ -1,4 +1,4 @@
-FROM alpine:3.20 AS test
+FROM debian:bookworm-slim AS test
 COPY dufs /usr/local/bin/dufs
 COPY assets /opt/dufs/assets
 RUN chmod +x /usr/local/bin/dufs
