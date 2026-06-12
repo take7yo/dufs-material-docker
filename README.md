@@ -102,27 +102,47 @@ dufs 原生支持 `DUFS_*` 前缀环境变量（[完整列表](https://github.co
 
 > 手动构建支持 4 架构，不支持 `i386`（stock dufs 上游未发布该平台二进制）。
 
+
 ---
 
 ## 📦 镜像标签
 
 ### 自动构建
 
+自动构建提供两种版本：
+
+#### 1. 嵌入式 UI 版本（`v` 前缀）
+
 | 标签 | 说明 |
 |------|------|
-| `latest` | 最新自动构建版本 |
 | `v0.46.0` | 指定版本号（带 `v` 前缀） |
 
-自动构建每日检查 [TransparentLC/dufs-material-assets](https://github.com/TransparentLC/dufs-material-assets) 新版本，使用该仓库发布的 `dufs-mod` 预构建二进制（Material UI 已直接编译嵌入二进制，无需额外资源包）。
+基于 [TransparentLC/dufs-material-assets](https://github.com/TransparentLC/dufs-material-assets) 发布的 `dufs-mod` 预构建二进制，Material UI 已直接编译嵌入二进制。
+
+- 支持 5 架构：`amd64` · `arm64` · `arm/v7` · `arm/v6` · `i386`
+- 不支持自定义界面
+- 工作流：[docker-build.yml](.github/workflows/docker-build.yml)
+
+#### 2. Assets 版本（`av` 前缀）⭐ 推荐
+
+| 标签 | 说明 |
+|------|------|
+| `latest` | 最新 assets 版本（默认推荐） |
+| `av0.46.0` | 指定版本号（带 `av` 前缀） |
+
+基于 [sigoden/dufs](https://github.com/sigoden/dufs) 原版二进制 + [dufs-material-assets](https://github.com/TransparentLC/dufs-material-assets) 资源包，通过 `--assets` 参数加载 UI。
+
+- 支持 4 架构：`amd64` · `arm64` · `arm/v7` · `arm/v6`
+- 支持自定义界面和 `config.yml` 配置
+- 工作流：[docker-build-assets.yml](.github/workflows/docker-build-assets.yml)
 
 ### 手动构建（`-fix` 后缀）
 
 | 标签 | 说明 |
 |------|------|
-| `latest` | 最新手动构建版本（会覆盖自动构建的 `latest`） |
 | `v0.46.0-fix` | 指定版本号（带 `-fix` 后缀） |
 
-手动构建使用 stock dufs 二进制 + [dufs-material-assets](https://github.com/TransparentLC/dufs-material-assets) 资源包组合方式（通过 `--assets` 参数加载 UI），支持选择二进制来源：
+手动构建使用 stock dufs 二进制 + [dufs-material-assets](https://github.com/TransparentLC/dufs-material-assets) 资源包组合方式，支持选择二进制来源：
 
 | 二进制来源 | 下载地址 | 说明 |
 |---|---|---|
@@ -132,7 +152,6 @@ dufs 原生支持 `DUFS_*` 前缀环境变量（[完整列表](https://github.co
 在 [Actions → Manual Build & Publish (-fix)](https://github.com/take7yo/dufs-material-docker/actions/workflows/docker-manual.yml) 中手动触发。
 
 ---
-
 ## 🔧 本地构建
 
 ```bash
