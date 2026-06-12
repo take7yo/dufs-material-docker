@@ -285,7 +285,7 @@ jobs:
       - name: Create and push multi-arch manifests
         run: |
           VERSION="${{ needs.check.outputs.version }}"
-          TAGS=("${VERSION}" "latest")
+          TAGS=("v${VERSION}" "latest")
 
           # Collect digest references
           DIGEST_REFS=""
