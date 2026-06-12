@@ -3,7 +3,7 @@
 > **基于 [dufs](https://github.com/sigoden/dufs) + [dufs-material-assets](https://github.com/TransparentLC/dufs-material-assets)，打包为 Docker 镜像，多架构自动构建**
 
 [![Docker Build](https://github.com/take7yo/dufs-material-docker/actions/workflows/docker-build-embed.yml/badge.svg)](https://github.com/take7yo/dufs-material-docker/actions/workflows/docker-build-embed.yml)
-[![Manual Build](https://github.com/take7yo/dufs-material-docker/actions/workflows/docker-manual.yml/badge.svg)](https://github.com/take7yo/dufs-material-docker/actions/workflows/docker-manual.yml)
+[![Manual Build](https://github.com/take7yo/dufs-material-docker/actions/workflows/docker-build-fix.yml/badge.svg)](https://github.com/take7yo/dufs-material-docker/actions/workflows/docker-build-fix.yml)
 [![Docker Hub](https://img.shields.io/docker/v/take7yo/dufs?label=Docker%20Hub&sort=semver)](https://hub.docker.com/r/take7yo/dufs)
 
 ---
@@ -86,6 +86,36 @@ dufs 原生支持 `DUFS_*` 前缀环境变量（[完整列表](https://github.co
 - 如需完全由 config.yml 控制，覆盖 ENTRYPOINT 移除默认路径参数
 
 ---
+## 🎨 自定义界面
+
+Assets 版本支持自定义 Material Design UI 界面。
+
+### 使用自定义 assets 目录
+
+```bash
+# 挂载自定义 assets 目录
+docker run -d -p 5000:5000 \
+  -v /path/to/share:/data \
+  -v /path/to/custom/assets:/opt/dufs/assets \
+  take7yo/dufs
+```
+
+### 获取默认 assets
+
+从 [dufs-material-assets](https://github.com/TransparentLC/dufs-material-assets/releases) 下载 `dufs-material-assets-embed.zip`，解压后即可自定义修改。
+
+### 相关 CLI 选项
+
+| 选项 | 说明 |
+|------|------|
+| `--assets <path>` | 指定自定义 assets 目录 |
+| `--render-index` | 目录请求返回 index.html（不存在则 404） |
+| `--render-try-index` | 目录请求返回 index.html（不存在则回退到列表） |
+| `--render-spa` | 启用单页应用模式 |
+| `--path-prefix <path>` | 添加 URL 路径前缀 |
+
+> ⚠️ 嵌入式 UI 版本（`-embed` 标签）不支持自定义界面，UI 已编译嵌入二进制。
+
 
 ## 🏗️ 支持架构
 
@@ -132,7 +162,7 @@ dufs 原生支持 `DUFS_*` 前缀环境变量（[完整列表](https://github.co
 
 | 标签格式 | 说明 | 工作流 |
 |---------|------|--------|
-| `v0.46.0-fix` | 手动触发，源码编译 | [docker-manual.yml](.github/workflows/docker-manual.yml) |
+| `v0.46.0-fix` | 手动触发，源码编译 | [docker-build-fix.yml](.github/workflows/docker-build-fix.yml) |
 
 手动构建用于紧急修复或特殊需求，支持指定源码仓库和版本，构建方式与 Assets 版相同。
 
@@ -145,23 +175,25 @@ cd dufs-material-docker
 
 docker buildx create --use
 
-# 自动构建版（dufs-mod 嵌入式，5 架构）
-docker buildx build --load -t dufs-local .
+# Assets 版（默认推荐，源码编译 + assets 资源包）
+docker buildx build --load -t dufs-local -f Dockerfile.assets \
+  --build-arg DUFS_VERSION=0.46.0 .
 
-# 手动构建版（stock dufs + assets，3 架构）
-docker buildx build --load -t dufs-local -f Dockerfile.stock \
-  --build-arg DUFS_VERSION=0.46.0 \
-  --build-arg DUFS_REPO=sigoden/dufs .
+# 嵌入式 UI 版（预构建二进制，UI 嵌入）
+docker buildx build --load -t dufs-local -f Dockerfile.embed \
+  --build-arg DUFS_VERSION=0.46.0 .
+
+# Fix 版（源码编译，用于紧急修复）
+docker buildx build --load -t dufs-local -f Dockerfile.fix \
+  --build-arg DUFS_VERSION=0.46.0 .
 
 # 多架构构建并推送
 docker buildx build \
-  --platform linux/amd64,linux/arm64,linux/arm/v7 \
+  --platform linux/amd64,linux/arm64,linux/arm/v7,linux/arm/v6,linux/386 \
+  -f Dockerfile.assets \
   -t take7yo/dufs:latest \
   --push .
 ```
-
----
-
 ## 📋 GitHub Secrets 配置
 
 在仓库 **Settings → Secrets and variables → Actions** 中添加以下 Secrets：

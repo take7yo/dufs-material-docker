@@ -1,5 +1,5 @@
 # ──────────────────────────────────────────────────────────────────────────────
-#  docker-build.yml – Build & publish take7yo/dufs Docker image
+#  docker-build-embed.yml – Build & publish take7yo/dufs Docker image (embed version)
 #
 #  Registries:
 #    • Docker Hub   – docker.io/take7yo/dufs
@@ -144,6 +144,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
+          file: Dockerfile.embed
           target: test
           load: true
           tags: dufs-test:${{ matrix.tag }}
@@ -236,6 +237,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
+          file: Dockerfile.embed
           platforms: linux/amd64,linux/arm64,linux/arm/v7,linux/arm/v6,linux/386
           push: true
           tags: ${{ steps.meta.outputs.tags }}

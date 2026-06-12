@@ -106,7 +106,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: Dockerfile.src
+          file: Dockerfile.assets
           target: test
           load: true
           tags: dufs-assets-test:${{ matrix.tag }}
@@ -172,7 +172,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: Dockerfile.src
+          file: Dockerfile.assets
           platforms: linux/amd64,linux/arm64,linux/arm/v7,linux/arm/v6,linux/386
           push: true
           tags: ${{ steps.meta.outputs.tags }}
