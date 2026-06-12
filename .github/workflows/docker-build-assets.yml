@@ -167,7 +167,7 @@ jobs:
 
           echo "Binary info:"
           docker run --rm --platform "$PLAT" --entrypoint sh "$IMAGE" \
-            -c "ls -lh /usr/local/bin/dufs"
+            -c "ls -lh /bin/dufs"
 
           docker run -d --name dufs-verify --platform "$PLAT" -p 5002:5000 \
             -e DUFS_ALLOW_ALL=true "$IMAGE"

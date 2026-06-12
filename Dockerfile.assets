@@ -4,37 +4,31 @@
 #  Expects pre-built dufs binary and assets/ directory in the build context.
 #  Binary is compiled in the CI workflow using cross (Rust cross-compilation).
 #
-#  Usage:
-#    docker run -p 5000:5000 -v /path/to/share:/data take7yo/dufs
-#    docker run -p 5000:5000 -v /path/to/config.yml:/config.yml take7yo/dufs -c /config.yml
-#
 #  Targets:
 #    test   – debian-based image with shell (for CI verification)
 #    final  – scratch-based minimal image (default, for publishing)
 ###############################################################################
 
-# ── 0. Certs stage (provides CA certificates for scratch image) ─────────────
-FROM --platform=$BUILDPLATFORM debian:bookworm-slim AS certs
-
 # ── 1. Test image (debian — has shell for CI verification) ──────────────────
 FROM debian:bookworm-slim AS test
 
-COPY dufs     /usr/local/bin/dufs
+COPY dufs     /bin/dufs
 COPY assets/  /opt/dufs/assets/
 
-RUN chmod +x /usr/local/bin/dufs
+RUN chmod +x /bin/dufs
 
 EXPOSE 5000
-ENTRYPOINT ["/usr/local/bin/dufs"]
-CMD ["/data", "--assets", "/opt/dufs/assets"]
+VOLUME ["/data"]
+ENTRYPOINT ["/bin/dufs", "/data", "--assets", "/opt/dufs/assets"]
+CMD ["--allow-all", "--bind", "0.0.0.0", "--port", "5000"]
 
 # ── 2. Final image (scratch — minimal, no shell) ────────────────────────────
 FROM scratch AS final
 
-COPY --from=certs /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
-COPY dufs     /usr/local/bin/dufs
+COPY dufs     /bin/dufs
 COPY assets/  /opt/dufs/assets/
 
 EXPOSE 5000
-ENTRYPOINT ["/usr/local/bin/dufs"]
-CMD ["/data", "--assets", "/opt/dufs/assets"]
+VOLUME ["/data"]
+ENTRYPOINT ["/bin/dufs", "/data", "--assets", "/opt/dufs/assets"]
+CMD ["--allow-all", "--bind", "0.0.0.0", "--port", "5000"]
