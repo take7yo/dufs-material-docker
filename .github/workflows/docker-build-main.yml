@@ -1,0 +1,342 @@
+# ──────────────────────────────────────────────────────────────────────────────
+#  docker-build-main.yml – Build & publish Docker image from main branches
+#
+#  Combines sigoden/dufs (main) + TransparentLC/dufs-material-assets (main).
+#  Uses commit hash comparison to detect upstream changes.
+#  Publishes as take7yo/dufs:main (no latest tag).
+#
+#  Trigger: schedule (daily), workflow_dispatch
+#  Platforms: amd64, arm64, arm/v7, arm/v6, i386
+#  Tags: main
+# ──────────────────────────────────────────────────────────────────────────────
+name: Build (Main)
+
+on:
+  schedule:
+    - cron: "47 3 * * *"
+  workflow_dispatch:
+    inputs:
+      dufs_commit:
+        description: "Force dufs commit SHA (leave empty for auto-detect)"
+        required: false
+      assets_commit:
+        description: "Force assets commit SHA (leave empty for auto-detect)"
+        required: false
+
+permissions:
+  contents: write
+
+env:
+  DOCKERHUB_REPO: take7yo/dufs
+  ACR_REGISTRY: registry.cn-hangzhou.aliyuncs.com
+  ACR_REPO: registry.cn-hangzhou.aliyuncs.com/take7yo/dufs
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      has_update: ${{ steps.check.outputs.has_update }}
+      dufs_commit: ${{ steps.check.outputs.dufs_commit }}
+      assets_commit: ${{ steps.check.outputs.assets_commit }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check upstream commits
+        id: check
+        run: |
+          if [ -n "${{ github.event.inputs.dufs_commit }}" ]; then
+            echo "has_update=true" >> "$GITHUB_OUTPUT"
+            echo "dufs_commit=${{ github.event.inputs.dufs_commit }}" >> "$GITHUB_OUTPUT"
+            echo "assets_commit=${{ github.event.inputs.assets_commit }}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          DUFS_SHA=$(curl -fsSL \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/sigoden/dufs/commits/main" \
+            | python3 -c "import sys,json; print(json.load(sys.stdin).get('sha',''))") || true
+
+          ASSETS_SHA=$(curl -fsSL \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/TransparentLC/dufs-material-assets/commits/master" \
+            | python3 -c "import sys,json; print(json.load(sys.stdin).get('sha',''))") || true
+
+          if [ -z "$DUFS_SHA" ] || [ -z "$ASSETS_SHA" ]; then
+            echo "::warning::Failed to fetch upstream commits, skipping build"
+            echo "has_update=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          CURRENT_DUFS=$(cat CURRENT_COMMIT_DUFS 2>/dev/null || echo "none")
+          CURRENT_ASSETS=$(cat CURRENT_COMMIT_ASSETS 2>/dev/null || echo "none")
+
+          if [ "$DUFS_SHA" = "$CURRENT_DUFS" ] && [ "$ASSETS_SHA" = "$CURRENT_ASSETS" ]; then
+            echo "has_update=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_update=true" >> "$GITHUB_OUTPUT"
+            echo "dufs_commit=$DUFS_SHA" >> "$GITHUB_OUTPUT"
+            echo "assets_commit=$ASSETS_SHA" >> "$GITHUB_OUTPUT"
+          fi
+
+  build-assets:
+    runs-on: ubuntu-latest
+    needs: check
+    if: needs.check.outputs.has_update == 'true'
+    steps:
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: latest
+          check-latest: true
+
+      - name: Build assets from source
+        run: |
+          git clone --depth 1 --branch master \
+            https://github.com/TransparentLC/dufs-material-assets.git assets-src
+          cd assets-src
+          pnpm install
+          pnpm run build
+          mkdir -p ../assets
+          cp -a dist/* ../assets/
+          cd ..
+          rm -rf assets-src
+
+      - name: Upload assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: assets-main
+          path: assets/
+
+  build:
+    runs-on: ubuntu-latest
+    needs: [check, build-assets]
+    if: needs.check.outputs.has_update == 'true'
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - platform: linux/amd64
+            target: x86_64-unknown-linux-musl
+          - platform: linux/arm64
+            target: aarch64-unknown-linux-musl
+          - platform: linux/arm/v7
+            target: armv7-unknown-linux-musleabihf
+          - platform: linux/arm/v6
+            target: arm-unknown-linux-musleabihf
+          - platform: linux/386
+            target: i686-unknown-linux-musl
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install cross
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cross
+
+      - name: Clone dufs source (main)
+        run: |
+          git clone --depth 1 \
+            https://github.com/sigoden/dufs.git dufs-src
+
+      - name: Build dufs binary
+        working-directory: dufs-src
+        run: cross build --locked --release --target=${{ matrix.target }}
+        env:
+          RUST_BACKTRACE: 1
+
+      - name: Copy binary
+        run: |
+          cp dufs-src/target/${{ matrix.target }}/release/dufs ./dufs
+          chmod +x ./dufs
+
+      - name: Download assets
+        uses: actions/download-artifact@v4
+        with:
+          name: assets-main
+          path: assets/
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build test image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.assets
+          target: test
+          load: true
+          tags: dufs-main-test:${{ matrix.target }}
+          platforms: ${{ matrix.platform }}
+
+      - name: Verify image
+        run: |
+          IMAGE="dufs-main-test:${{ matrix.target }}"
+          PLAT="${{ matrix.platform }}"
+          UA="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120.0.0.0"
+
+          echo "Binary info:"
+          docker run --rm --platform "$PLAT" --entrypoint sh "$IMAGE" \
+            -c "ls -lh /bin/dufs"
+
+          docker run -d --name dufs-verify --platform "$PLAT" -p 5000:5000 \
+            -e DUFS_ALLOW_ALL=true "$IMAGE"
+          sleep 3
+
+          BODY=$(curl -sf -A "$UA" http://localhost:5000/)
+          if echo "$BODY" | grep -q "__INITIAL_DATA__"; then
+            echo "Material UI detected"
+          else
+            echo "Material UI NOT detected"
+            docker stop dufs-verify
+            exit 1
+          fi
+
+          docker stop dufs-verify
+          echo "Verification passed for ${{ matrix.platform }}"
+
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: dufs-${{ matrix.target }}
+          path: dufs
+
+  push:
+    runs-on: ubuntu-latest
+    needs: [check, build]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          pattern: "{dufs,assets}-*"
+
+      - name: Debug artifacts
+        run: |
+          echo "Listing artifacts directory:"
+          ls -la artifacts/ 2>/dev/null || echo "No artifacts directory"
+          echo ""
+          echo "Looking for dufs binaries:"
+          find artifacts/ -name "dufs" -type f 2>/dev/null || echo "No dufs found"
+          echo ""
+          echo "Looking for assets:"
+          find artifacts/ -name "assets" -type d 2>/dev/null || echo "No assets found"
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Login to ACR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.ACR_REGISTRY }}
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push per-platform images
+        run: |
+          DUFS_SHORT="${{ needs.check.outputs.dufs_commit }}"
+          DUFS_SHORT="${DUFS_SHORT:0:7}"
+
+          declare -A PLATFORM_MAP=(
+            ["amd64"]="x86_64-unknown-linux-musl"
+            ["arm64"]="aarch64-unknown-linux-musl"
+            ["armv7"]="armv7-unknown-linux-musleabihf"
+            ["armv6"]="arm-unknown-linux-musleabihf"
+            ["i386"]="i686-unknown-linux-musl"
+          )
+
+          mkdir -p /tmp/digests
+
+          for PLAT in amd64 arm64 armv7 armv6 i386; do
+            TARGET="${PLATFORM_MAP[$PLAT]}"
+            BUILD_DIR="/tmp/build-${PLAT}"
+
+            mkdir -p "${BUILD_DIR}/assets"
+            cp "artifacts/dufs-${TARGET}/dufs" "${BUILD_DIR}/"
+            chmod +x "${BUILD_DIR}/dufs"
+            cp -r "artifacts/assets-main/"* "${BUILD_DIR}/assets/" 2>/dev/null || true
+            cp Dockerfile.assets "${BUILD_DIR}/"
+
+            docker buildx build \
+              --platform "linux/${PLAT}" \
+              --file "${BUILD_DIR}/Dockerfile.assets" \
+              --target final \
+              --label "org.opencontainers.image.title=dufs-material" \
+              --label "org.opencontainers.image.description=Dufs file server with Material Design UI (main branch)" \
+              --label "org.opencontainers.image.vendor=take7yo" \
+              --label "org.opencontainers.image.version=main-${DUFS_SHORT}" \
+              --label "org.opencontainers.image.revision=${{ needs.check.outputs.dufs_commit }}" \
+              --output "type=image,name=${{ env.DOCKERHUB_REPO }},push-by-digest=true,name-canonical=true,push=true" \
+              --metadata-file "/tmp/metadata-${PLAT}.json" \
+              "${BUILD_DIR}"
+
+            DIGEST=$(jq -r '."containerimage.digest"' "/tmp/metadata-${PLAT}.json")
+            echo "${DIGEST}" > "/tmp/digests/${PLAT}"
+            echo "Pushed linux/${PLAT}: ${DIGEST}"
+          done
+
+      - name: Create and push multi-arch manifest
+        run: |
+          DIGEST_REFS=""
+          for PLAT in amd64 arm64 armv7 armv6 i386; do
+            DIGEST=$(cat "/tmp/digests/${PLAT}")
+            DIGEST_REFS="${DIGEST_REFS} ${{ env.DOCKERHUB_REPO }}@${DIGEST}"
+          done
+
+          docker buildx imagetools create \
+            --tag "${{ env.DOCKERHUB_REPO }}:main" \
+            --tag "${{ env.ACR_REPO }}:main" \
+            ${DIGEST_REFS}
+
+      - name: Update commit hash files
+        run: |
+          echo "${{ needs.check.outputs.dufs_commit }}" > CURRENT_COMMIT_DUFS
+          echo "${{ needs.check.outputs.assets_commit }}" > CURRENT_COMMIT_ASSETS
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add CURRENT_COMMIT_DUFS CURRENT_COMMIT_ASSETS
+          git diff --cached --quiet || \
+            git commit -m "chore: bump main branch commits
+          dufs: ${{ needs.check.outputs.dufs_commit }}
+          assets: ${{ needs.check.outputs.assets_commit }}"
+          git push || echo "::warning::Could not push version update"
+
+      - name: Summary
+        run: |
+          DUFS_SHORT="${{ needs.check.outputs.dufs_commit }}"
+          DUFS_SHORT="${DUFS_SHORT:0:7}"
+          ASSETS_SHORT="${{ needs.check.outputs.assets_commit }}"
+          ASSETS_SHORT="${ASSETS_SHORT:0:7}"
+          echo "## Docker Image Published (Main Branch)" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Item | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|------|-------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Tag | \`main\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| dufs commit | \`${DUFS_SHORT}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| assets commit | \`${ASSETS_SHORT}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Platforms | linux/amd64, linux/arm64, linux/arm/v7, linux/arm/v6, linux/386 |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Build method | Cross-compiled (Rust stable + cross) |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Note | Built from main branches, not release tags |" >> "$GITHUB_STEP_SUMMARY"
