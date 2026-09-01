@@ -10,7 +10,7 @@
 ###############################################################################
 
 # ── 1. Builder ───────────────────────────────────────────────────────────────
-FROM --platform=$BUILDPLATFORM debian:bookworm-slim AS builder
+FROM --platform=linux/amd64 debian:bookworm-slim AS builder
 
 ARG DUFS_VERSION=0.46.0
 ARG TARGETARCH
