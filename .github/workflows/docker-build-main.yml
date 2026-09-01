@@ -30,7 +30,7 @@ env:
   DOCKERHUB_REPO: take7yo/dufs
   ACR_REGISTRY: registry.cn-hangzhou.aliyuncs.com
   ACR_REPO: registry.cn-hangzhou.aliyuncs.com/take7yo/dufs
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+  # FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
   check:
