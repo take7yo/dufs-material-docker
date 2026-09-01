@@ -30,7 +30,7 @@ env:
   DOCKERHUB_REPO: take7yo/dufs
   ACR_REGISTRY: registry.cn-hangzhou.aliyuncs.com
   ACR_REPO: registry.cn-hangzhou.aliyuncs.com/take7yo/dufs
-  # FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
   check:
@@ -127,8 +127,6 @@ jobs:
             target: aarch64-unknown-linux-musl
           - platform: linux/arm/v7
             target: armv7-unknown-linux-musleabihf
-          - platform: linux/arm/v6
-            target: arm-unknown-linux-musleabihf
           - platform: linux/386
             target: i686-unknown-linux-musl
     steps:
@@ -265,13 +263,12 @@ jobs:
             ["amd64"]="x86_64-unknown-linux-musl"
             ["arm64"]="aarch64-unknown-linux-musl"
             ["armv7"]="armv7-unknown-linux-musleabihf"
-            ["armv6"]="arm-unknown-linux-musleabihf"
             ["i386"]="i686-unknown-linux-musl"
           )
 
           mkdir -p /tmp/digests
 
-          for PLAT in amd64 arm64 armv7 armv6 i386; do
+          for PLAT in amd64 arm64 armv7 i386; do
             TARGET="${PLATFORM_MAP[$PLAT]}"
             BUILD_DIR="/tmp/build-${PLAT}"
 
@@ -302,7 +299,7 @@ jobs:
       - name: Create and push multi-arch manifest
         run: |
           DIGEST_REFS=""
-          for PLAT in amd64 arm64 armv7 armv6 i386; do
+          for PLAT in amd64 arm64 armv7 i386; do
             DIGEST=$(cat "/tmp/digests/${PLAT}")
             DIGEST_REFS="${DIGEST_REFS} ${{ env.DOCKERHUB_REPO }}@${DIGEST}"
           done
@@ -338,6 +335,6 @@ jobs:
           echo "| Tag | \`main\` |" >> "$GITHUB_STEP_SUMMARY"
           echo "| dufs commit | \`${DUFS_SHORT}\` |" >> "$GITHUB_STEP_SUMMARY"
           echo "| assets commit | \`${ASSETS_SHORT}\` |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Platforms | linux/amd64, linux/arm64, linux/arm/v7, linux/arm/v6, linux/386 |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Platforms | linux/amd64, linux/arm64, linux/arm/v7, linux/386 |" >> "$GITHUB_STEP_SUMMARY"
           echo "| Build method | Cross-compiled (Rust stable + cross) |" >> "$GITHUB_STEP_SUMMARY"
           echo "| Note | Built from main branches, not release tags |" >> "$GITHUB_STEP_SUMMARY"
