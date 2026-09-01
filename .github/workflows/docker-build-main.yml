@@ -290,6 +290,8 @@ jobs:
             cp Dockerfile.assets "${BUILD_DIR}/"
 
             docker buildx build \
+              --provenance=false \
+              --sbom=false \
               --platform "linux/${PLAT}" \
               --file "${BUILD_DIR}/Dockerfile.assets" \
               --target final \
