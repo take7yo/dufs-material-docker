@@ -4,6 +4,12 @@
 #  Trigger: schedule (daily 03:17 UTC), release, workflow_dispatch
 #  Platforms: amd64, arm64, armv7, armv6, i386
 #  Tags: v{version}-embed
+#
+#  Note: Dockerfile.embed's builder/test stages use debian:bookworm-slim which
+#  no longer provides linux/arm/v6 (removed upstream between 2026-07-21 and
+#  2026-08-16). Builder is pinned to linux/amd64 (only downloads pre-built
+#  static binaries), and final stage uses scratch (supports all platforms).
+#  CI test/verify skips linux/arm/v6, but it is still published via scratch.
 # ──────────────────────────────────────────────────────────────────────────────
 name: Build (Embed)
 
@@ -117,6 +123,11 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: "[${{ matrix.tag }}] Build test image"
+        # Skip for linux/arm/v6 because debian:bookworm-slim no longer provides
+        # a manifest for this platform (upstream removed it between 2026-07-21
+        # and 2026-08-16). The final published image uses scratch and does not
+        # depend on debian, so armv6 is still included in the multi-arch manifest.
+        if: matrix.platform != 'linux/arm/v6'
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -129,6 +140,8 @@ jobs:
             DUFS_VERSION=${{ needs.check.outputs.version }}
 
       - name: "[${{ matrix.tag }}] Verify image"
+        # Skip for linux/arm/v6 for the same reason as above.
+        if: matrix.platform != 'linux/arm/v6'
         run: |
           IMAGE="dufs-embed-test:${{ matrix.tag }}"
           PLAT="${{ matrix.platform }}"
@@ -192,6 +205,11 @@ jobs:
         with:
           context: .
           file: Dockerfile.embed
+          # linux/arm/v6 is retained here because:
+          #   - builder stage is pinned to linux/amd64 (only downloads static binaries)
+          #   - final stage uses scratch (supports all platforms including arm/v6)
+          # CI test/verify for arm/v6 is skipped above (debian-based test stage),
+          # but the published multi-arch manifest still includes arm/v6.
           platforms: linux/amd64,linux/arm64,linux/arm/v7,linux/arm/v6,linux/386
           push: true
           tags: ${{ steps.meta.outputs.tags }}
@@ -208,4 +226,4 @@ jobs:
           echo "| Version | \`${{ needs.check.outputs.version }}\` |" >> "$GITHUB_STEP_SUMMARY"
           echo "| Tag | \`v${{ needs.check.outputs.version }}-embed\` |" >> "$GITHUB_STEP_SUMMARY"
           echo "| Platforms | linux/amd64, linux/arm64, linux/arm/v7, linux/arm/v6, linux/386 |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Build method | Pre-built binary (Dockerfile.embed) |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Build method | Pre-built binary (Dockerfile.embed, scratch final) |" >> "$GITHUB_STEP_SUMMARY"
