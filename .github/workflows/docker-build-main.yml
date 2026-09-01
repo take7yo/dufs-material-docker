@@ -127,6 +127,8 @@ jobs:
             target: aarch64-unknown-linux-musl
           - platform: linux/arm/v7
             target: armv7-unknown-linux-musleabihf
+          - platform: linux/arm/v6
+            target: arm-unknown-linux-musleabihf
           - platform: linux/386
             target: i686-unknown-linux-musl
     steps:
@@ -171,6 +173,9 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Build test image
+        # Skip for linux/arm/v6 because debian:bookworm-slim no longer provides
+        # a manifest for this platform (upstream removed it between 2026-07-21 and 2026-08-16)
+        if: matrix.platform != 'linux/arm/v6'
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -181,6 +186,11 @@ jobs:
           platforms: ${{ matrix.platform }}
 
       - name: Verify image
+        # Skip for linux/arm/v6 for the same reason as above.
+        # Binary itself is still cross-compiled and will be included in the
+        # published multi-arch image (final stage uses scratch and does not
+        # depend on debian).
+        if: matrix.platform != 'linux/arm/v6'
         run: |
           IMAGE="dufs-main-test:${{ matrix.target }}"
           PLAT="${{ matrix.platform }}"
@@ -263,12 +273,13 @@ jobs:
             ["amd64"]="x86_64-unknown-linux-musl"
             ["arm64"]="aarch64-unknown-linux-musl"
             ["armv7"]="armv7-unknown-linux-musleabihf"
+            ["armv6"]="arm-unknown-linux-musleabihf"
             ["i386"]="i686-unknown-linux-musl"
           )
 
           mkdir -p /tmp/digests
 
-          for PLAT in amd64 arm64 armv7 i386; do
+          for PLAT in amd64 arm64 armv7 armv6 i386; do
             TARGET="${PLATFORM_MAP[$PLAT]}"
             BUILD_DIR="/tmp/build-${PLAT}"
 
@@ -299,7 +310,7 @@ jobs:
       - name: Create and push multi-arch manifest
         run: |
           DIGEST_REFS=""
-          for PLAT in amd64 arm64 armv7 i386; do
+          for PLAT in amd64 arm64 armv7 armv6 i386; do
             DIGEST=$(cat "/tmp/digests/${PLAT}")
             DIGEST_REFS="${DIGEST_REFS} ${{ env.DOCKERHUB_REPO }}@${DIGEST}"
           done
@@ -335,6 +346,6 @@ jobs:
           echo "| Tag | \`main\` |" >> "$GITHUB_STEP_SUMMARY"
           echo "| dufs commit | \`${DUFS_SHORT}\` |" >> "$GITHUB_STEP_SUMMARY"
           echo "| assets commit | \`${ASSETS_SHORT}\` |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Platforms | linux/amd64, linux/arm64, linux/arm/v7, linux/386 |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Platforms | linux/amd64, linux/arm64, linux/arm/v7, linux/arm/v6, linux/386 |" >> "$GITHUB_STEP_SUMMARY"
           echo "| Build method | Cross-compiled (Rust stable + cross) |" >> "$GITHUB_STEP_SUMMARY"
           echo "| Note | Built from main branches, not release tags |" >> "$GITHUB_STEP_SUMMARY"
