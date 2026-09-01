@@ -264,6 +264,8 @@ jobs:
 
             # Build and push by digest using metadata file
             docker buildx build \
+              --provenance=false \
+              --sbom=false \
               --platform "linux/${PLAT}" \
               --file "${BUILD_DIR}/Dockerfile.fix" \
               --target final \
