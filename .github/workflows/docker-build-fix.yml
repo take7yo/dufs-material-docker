@@ -150,6 +150,11 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Build test image
+        # Skip for linux/arm/v6 because debian:bookworm-slim no longer provides
+        # a manifest for this platform (upstream removed it between 2026-07-21
+        # and 2026-08-16). The final published image uses scratch and does not
+        # depend on debian, so armv6 is still included in the multi-arch manifest.
+        if: matrix.platform != 'linux/arm/v6'
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -160,6 +165,8 @@ jobs:
           platforms: ${{ matrix.platform }}
 
       - name: Verify image
+        # Skip for linux/arm/v6 for the same reason as above.
+        if: matrix.platform != 'linux/arm/v6'
         run: |
           IMAGE="dufs-fix-test:${{ matrix.target }}"
           PLAT="${{ matrix.platform }}"
