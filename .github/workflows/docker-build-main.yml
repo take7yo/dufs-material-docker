@@ -87,8 +87,7 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
         with:
-         # version: latest
-          version: 11.19.0
+          version: latest
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -101,6 +100,18 @@ jobs:
           git clone --depth 1 --branch master \
             https://github.com/TransparentLC/dufs-material-assets.git assets-src
           cd assets-src
+      
+          node -e "
+            const fs = require('fs');
+            const pkg = JSON.parse(fs.readFileSync('./package.json', 'utf8'));
+            if (pkg.pnpm?.patchedDependencies) {
+              delete pkg.pnpm.patchedDependencies['is-local-address@2.4.4'];
+              if (!Object.keys(pkg.pnpm.patchedDependencies).length) delete pkg.pnpm.patchedDependencies;
+            }
+            fs.writeFileSync('./package.json', JSON.stringify(pkg, null, 2) + '\n');
+          "
+          rm -f patches/is-local-address.patch
+      
           pnpm install
           pnpm run build
           mkdir -p ../assets
