@@ -101,23 +101,28 @@ jobs:
             https://github.com/TransparentLC/dufs-material-assets.git assets-src
           cd assets-src
       
-          echo "=== Files containing is-local-address ==="
-          grep -rn "is-local-address" . \
-            --include="*.json" \
-            --include="*.yaml" \
-            --include="*.yml" \
-            --exclude-dir=node_modules 2>/dev/null || echo "none"
+          # 从 pnpm-workspace.yaml 中移除 is-local-address 补丁引用
+          # 只删这一行，subsrt 的补丁保留
+          node -e "
+            const fs = require('fs');
+            const path = './pnpm-workspace.yaml';
+            if (fs.existsSync(path)) {
+              const lines = fs.readFileSync(path, 'utf8').split('\n');
+              const filtered = lines.filter(l => !l.includes('is-local-address'));
+              fs.writeFileSync(path, filtered.join('\n'));
+            }
+          "
       
-          echo "=== pnpm-workspace.yaml ==="
-          cat pnpm-workspace.yaml 2>/dev/null || echo "not found"
+          # 删除对应补丁文件和旧 lock（lock 里也记录了补丁 hash）
+          rm -f patches/is-local-address.patch
+          rm -f pnpm-lock.yaml
       
-          echo "=== package.json pnpm field ==="
-          node -e "console.log(JSON.stringify(require('./package.json').pnpm || {}, null, 2))"
-      
-          echo "=== patches dir ==="
-          ls -la patches/ 2>/dev/null || echo "no patches dir"
-      
-          exit 1  # 先停在这里，方便看清输出
+          pnpm install
+          pnpm run build
+          mkdir -p ../assets
+          cp -a dist/* ../assets/
+          cd ..
+          rm -rf assets-src
 
       - name: Upload assets
         uses: actions/upload-artifact@v7
