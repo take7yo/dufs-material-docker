@@ -101,6 +101,7 @@ jobs:
             https://github.com/TransparentLC/dufs-material-assets.git assets-src
           cd assets-src
       
+          # 1. 从 package.json 移除补丁配置
           node -e "
             const fs = require('fs');
             const pkg = JSON.parse(fs.readFileSync('./package.json', 'utf8'));
@@ -110,10 +111,15 @@ jobs:
             }
             fs.writeFileSync('./package.json', JSON.stringify(pkg, null, 2) + '\n');
           "
-          rm -f patches/is-local-address.patch
       
+          # 2. 删除补丁文件和 lock 文件
+          rm -f patches/is-local-address.patch
+          rm -f pnpm-lock.yaml
+      
+          # 3. 重新安装（会生成新的 lock 文件，不再引用补丁）
           pnpm install
           pnpm run build
+      
           mkdir -p ../assets
           cp -a dist/* ../assets/
           cd ..
