@@ -97,28 +97,93 @@ jobs:
 
       - name: Build assets from source
         run: |
+          set -euo pipefail
+      
+          # ─────────────────────────────────────────────────────────────
+          # 1. 克隆上游前端仓库
+          # ─────────────────────────────────────────────────────────────
           git clone --depth 1 --branch master \
             https://github.com/TransparentLC/dufs-material-assets.git assets-src
           cd assets-src
       
-          # 从 pnpm-workspace.yaml 中移除 is-local-address 补丁引用
-          # 只删这一行，subsrt 的补丁保留
+          # ─────────────────────────────────────────────────────────────
+          # 2. 前置校验：补丁文件必须存在
+          #    上游若删除/改名补丁，这里立即报错，避免静默失效
+          # ─────────────────────────────────────────────────────────────
+          if [ ! -f patches/is-local-address.patch ]; then
+            echo "❌ 上游已删除 patches/is-local-address.patch"
+            echo "   请检查是否需要保留 localhost 判定逻辑"
+            exit 1
+          fi
+      
+          # ─────────────────────────────────────────────────────────────
+          # 3. 备份补丁文件（pnpm install 之后仍要用）
+          # ─────────────────────────────────────────────────────────────
+          cp patches/is-local-address.patch /tmp/is-local-address.patch
+      
+          # ─────────────────────────────────────────────────────────────
+          # 4. 从 pnpm-workspace.yaml 中移除 is-local-address 引用
+          #    仅删这一行，subsrt 保留不动
+          # ─────────────────────────────────────────────────────────────
           node -e "
             const fs = require('fs');
             const path = './pnpm-workspace.yaml';
-            if (fs.existsSync(path)) {
-              const lines = fs.readFileSync(path, 'utf8').split('\n');
-              const filtered = lines.filter(l => !l.includes('is-local-address'));
-              fs.writeFileSync(path, filtered.join('\n'));
+            if (!fs.existsSync(path)) {
+              console.error('❌ pnpm-workspace.yaml 不存在');
+              process.exit(1);
             }
+            const lines = fs.readFileSync(path, 'utf8').split('\n');
+            const before = lines.length;
+            const filtered = lines.filter(l => !l.includes('is-local-address'));
+            fs.writeFileSync(path, filtered.join('\n'));
+            console.log('pnpm-workspace.yaml: ' + before + ' → ' + filtered.length + ' 行');
           "
       
-          # 删除对应补丁文件和旧 lock（lock 里也记录了补丁 hash）
-          rm -f patches/is-local-address.patch
+          # ─────────────────────────────────────────────────────────────
+          # 5. 删除旧 lock，避免其中残留的补丁 hash 触发 PATCH_NOT_FOUND
+          # ─────────────────────────────────────────────────────────────
           rm -f pnpm-lock.yaml
       
+          # ─────────────────────────────────────────────────────────────
+          # 6. 安装原版依赖（此时 is-local-address 未打补丁）
+          # ─────────────────────────────────────────────────────────────
           pnpm install
+      
+          # ─────────────────────────────────────────────────────────────
+          # 7. 用系统 patch 命令应用上游补丁
+          #    -p1            : 剥掉 a/ b/ 前缀
+          #    --fuzz=3       : 容忍上下文最多 3 行偏差
+          #    --no-backup-if-mismatch : 不生成 .orig 备份
+          # ─────────────────────────────────────────────────────────────
+          if [ ! -d node_modules/is-local-address ]; then
+            echo "❌ node_modules/is-local-address 不存在，上游可能已移除该依赖"
+            exit 1
+          fi
+      
+          cd node_modules/is-local-address
+          patch -p1 --fuzz=3 --no-backup-if-mismatch < /tmp/is-local-address.patch
+          cd ../..
+      
+          # ─────────────────────────────────────────────────────────────
+          # 8. 后置校验：确认补丁确实生效
+          # ─────────────────────────────────────────────────────────────
+          if grep -q "hostname === 'localhost'" node_modules/is-local-address/src/index.js; then
+            echo "✅ is-local-address 补丁已成功应用"
+          else
+            echo "❌ 补丁应用后未检测到 localhost 判定逻辑"
+            echo "   当前 src/index.js 内容："
+            cat node_modules/is-local-address/src/index.js
+            exit 1
+          fi
+      
+          # ─────────────────────────────────────────────────────────────
+          # 9. 构建前端资源
+          # ─────────────────────────────────────────────────────────────
           pnpm run build
+      
+          # ─────────────────────────────────────────────────────────────
+          # 10. 收集产物并清理
+          # ─────────────────────────────────────────────────────────────
           mkdir -p ../assets
           cp -a dist/* ../assets/
           cd ..
