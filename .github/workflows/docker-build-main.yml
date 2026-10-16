@@ -101,29 +101,23 @@ jobs:
             https://github.com/TransparentLC/dufs-material-assets.git assets-src
           cd assets-src
       
-          # 1. 从 package.json 移除补丁配置
-          node -e "
-            const fs = require('fs');
-            const pkg = JSON.parse(fs.readFileSync('./package.json', 'utf8'));
-            if (pkg.pnpm?.patchedDependencies) {
-              delete pkg.pnpm.patchedDependencies['is-local-address@2.4.4'];
-              if (!Object.keys(pkg.pnpm.patchedDependencies).length) delete pkg.pnpm.patchedDependencies;
-            }
-            fs.writeFileSync('./package.json', JSON.stringify(pkg, null, 2) + '\n');
-          "
+          echo "=== Files containing is-local-address ==="
+          grep -rn "is-local-address" . \
+            --include="*.json" \
+            --include="*.yaml" \
+            --include="*.yml" \
+            --exclude-dir=node_modules 2>/dev/null || echo "none"
       
-          # 2. 删除补丁文件和 lock 文件
-          rm -f patches/is-local-address.patch
-          rm -f pnpm-lock.yaml
+          echo "=== pnpm-workspace.yaml ==="
+          cat pnpm-workspace.yaml 2>/dev/null || echo "not found"
       
-          # 3. 重新安装（会生成新的 lock 文件，不再引用补丁）
-          pnpm install
-          pnpm run build
+          echo "=== package.json pnpm field ==="
+          node -e "console.log(JSON.stringify(require('./package.json').pnpm || {}, null, 2))"
       
-          mkdir -p ../assets
-          cp -a dist/* ../assets/
-          cd ..
-          rm -rf assets-src
+          echo "=== patches dir ==="
+          ls -la patches/ 2>/dev/null || echo "no patches dir"
+      
+          exit 1  # 先停在这里，方便看清输出
 
       - name: Upload assets
         uses: actions/upload-artifact@v7
