@@ -1,6 +1,7 @@
 # 🐳 dufs-material-docker
 
 > **基于 [dufs](https://github.com/sigoden/dufs) + [dufs-material-assets](https://github.com/TransparentLC/dufs-material-assets)，打包为 Docker 镜像，多架构自动构建**
+
 [![Docker Pulls](https://img.shields.io/docker/pulls/take7yo/dufs)](https://hub.docker.com/r/take7yo/dufs)
 [![Docker Build](https://github.com/take7yo/dufs-material-docker/actions/workflows/docker-build-assets.yml/badge.svg)](https://github.com/take7yo/dufs-material-docker/actions/workflows/docker-build-assets.yml)
 [![Docker Build](https://github.com/take7yo/dufs-material-docker/actions/workflows/docker-build-embed.yml/badge.svg)](https://github.com/take7yo/dufs-material-docker/actions/workflows/docker-build-embed.yml)
